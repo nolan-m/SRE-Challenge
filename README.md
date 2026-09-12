@@ -120,6 +120,22 @@ After a release PR is merged, the deployment job builds one image and publishes 
 
 ### Bootstrap requirements
 
+Terraform state is stored remotely in the protected GCS bucket
+`nolan-sre-challenge-tfstate`. Bootstrap that bucket once before initializing
+the main Terraform configuration:
+
+```bash
+terraform -chdir=terraform/state-bootstrap init
+terraform -chdir=terraform/state-bootstrap apply \
+	-var="project_id=nolan-sre-challenge"
+terraform -chdir=terraform init -migrate-state
+```
+
+Review the migration prompt and confirm that the existing local state is copied
+to `gs://nolan-sre-challenge-tfstate/terraform/state`. The bucket is versioned,
+uses uniform bucket-level access, blocks public access, and cannot be destroyed
+by Terraform.
+
 
 
 1. Apply Terraform with `github_repository` set to the repository's `OWNER/REPOSITORY` value and a trusted `master_authorized_networks` CIDR.

@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - terraform/**
-      - .github/workflows/terraform.yml
+      - .github/workflows/on-infrastructure-update.yaml
   workflow_dispatch:
     inputs:
       apply:
