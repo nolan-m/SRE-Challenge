@@ -127,7 +127,8 @@ the main Terraform configuration:
 ```bash
 terraform -chdir=terraform/state-bootstrap init
 terraform -chdir=terraform/state-bootstrap apply \
-	-var="project_id=nolan-sre-challenge"
+	-var="project_id=nolan-sre-challenge" \
+	-var="terraform_service_account=github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com"
 terraform -chdir=terraform init -migrate-state
 ```
 

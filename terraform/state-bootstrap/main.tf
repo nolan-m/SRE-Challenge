@@ -45,3 +45,9 @@ resource "google_storage_bucket" "terraform_state" {
 
   depends_on = [google_project_service.bootstrap]
 }
+
+resource "google_storage_bucket_iam_member" "terraform_backend" {
+  bucket = google_storage_bucket.terraform_state.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${var.terraform_service_account}"
+}
