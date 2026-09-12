@@ -41,7 +41,7 @@ output "github_actions_deployer_service_account" {
 
 output "github_actions_terraform_service_account" {
   description = "Service account email used by the GitHub Actions Terraform workflow."
-  value       = google_service_account.github_actions_terraform.email
+  value       = "${var.github_terraform_service_account_id}@${var.project_id}.iam.gserviceaccount.com"
 }
 
 output "github_actions_image_repository" {

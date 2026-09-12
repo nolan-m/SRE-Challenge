@@ -26,3 +26,38 @@ variable "terraform_state_members" {
   type        = set(string)
   default     = []
 }
+
+variable "github_repository" {
+  description = "GitHub repository allowed to authenticate through Workload Identity Federation."
+  type        = string
+}
+
+variable "github_branch" {
+  description = "GitHub branch allowed to use the Terraform identity."
+  type        = string
+  default     = "main"
+}
+
+variable "workload_identity_pool_id" {
+  description = "Workload Identity Pool ID for GitHub Actions."
+  type        = string
+  default     = "github-actions"
+}
+
+variable "workload_identity_provider_id" {
+  description = "Workload Identity Provider ID for GitHub Actions."
+  type        = string
+  default     = "github-oidc"
+}
+
+variable "terraform_service_account_id" {
+  description = "Service account ID used by the Terraform workflow."
+  type        = string
+  default     = "github-actions-terraform"
+}
+
+variable "deployer_service_account_id" {
+  description = "Service account ID used by the application deployment workflow."
+  type        = string
+  default     = "github-actions-deployer"
+}

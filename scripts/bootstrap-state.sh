@@ -85,6 +85,7 @@ echo "Applying state bucket and IAM configuration..."
 terraform -chdir="$BOOTSTRAP_DIR" apply -input=false -auto-approve \
   -var="project_id=$PROJECT_ID" \
   -var="state_bucket_name=$STATE_BUCKET_NAME" \
+  -var="github_repository=${GITHUB_REPOSITORY:-nolan-m/SRE-Challenge}" \
   -var="terraform_state_members=$MEMBERS_JSON"
 
 echo "Initializing the main Terraform backend. Review the migration prompt..."
