@@ -125,14 +125,12 @@ Terraform state is stored remotely in the protected GCS bucket
 the main Terraform configuration:
 
 ```bash
-terraform -chdir=terraform/state-bootstrap init
-terraform -chdir=terraform/state-bootstrap apply \
-	-var="project_id=nolan-sre-challenge"
-terraform -chdir=terraform init -migrate-state
+./scripts/bootstrap-state.sh --project-id nolan-sre-challenge
 ```
 
-Review the migration prompt and confirm that the existing local state is copied
-to `gs://nolan-sre-challenge-tfstate/terraform/state`. The bucket is versioned,
+The script adds the active gcloud account and GitHub deployer to the bucket IAM
+policy, then prompts before copying existing local state to
+`gs://nolan-sre-challenge-tfstate/terraform/state`. The bucket is versioned,
 uses uniform bucket-level access, blocks public access, and cannot be destroyed
 by Terraform.
 
