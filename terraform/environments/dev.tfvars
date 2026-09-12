@@ -6,7 +6,7 @@ cluster_name                 = "nolan-sre"
 network_name                 = "nolan-sre-vpc"
 subnetwork_name              = "nolan-sre-gke"
 artifact_registry_repository = "nolan-sre"
-github_repository            = "replace-with-your-github-owner/repository"
+github_repository            = "nolan-m/SRE-Challenge"
 
 nodes_cidr    = "10.10.0.0/20"
 pods_cidr     = "10.20.0.0/16"
