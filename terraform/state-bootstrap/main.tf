@@ -56,7 +56,7 @@ resource "google_storage_bucket_iam_member" "terraform_backend" {
   bucket     = google_storage_bucket.terraform_state.name
   role       = "roles/storage.objectAdmin"
   member     = each.value
-  depends_on = [google_service_account.terraform]
+  depends_on = [data.google_service_account.deployer]
 }
 
 resource "google_service_account" "terraform" {
@@ -105,5 +105,5 @@ resource "google_project_iam_member" "terraform_roles" {
   for_each = local.terraform_roles
   project  = var.project_id
   role     = each.value
-  member   = "serviceAccount:${google_service_account.terraform.email}"
+  member   = "serviceAccount:${data.google_service_account.deployer.email}"
 }

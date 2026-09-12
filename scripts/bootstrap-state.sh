@@ -74,7 +74,6 @@ ACTIVE_ACCOUNT="$(gcloud config get-value account 2>/dev/null)"
 
 STATE_MEMBERS+=("user:${ACTIVE_ACCOUNT}")
 STATE_MEMBERS+=("serviceAccount:github-actions-deployer@${PROJECT_ID}.iam.gserviceaccount.com")
-STATE_MEMBERS+=("serviceAccount:github-actions-terraform@${PROJECT_ID}.iam.gserviceaccount.com")
 
 MEMBERS_JSON="$(printf '%s\n' "${STATE_MEMBERS[@]}" | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')"
 
