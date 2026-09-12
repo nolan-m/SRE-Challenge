@@ -12,6 +12,7 @@ REGION=""
 CLUSTER_NAME=""
 ARTIFACT_REGISTRY_REPOSITORY=""
 IMAGE_TAG=""
+IMAGE_REFERENCE=""
 MASTER_AUTHORIZED_IP="${MASTER_AUTHORIZED_IP:-}"
 MASTER_AUTHORIZED_DISPLAY_NAME="${MASTER_AUTHORIZED_DISPLAY_NAME:-my-workstation}"
 
@@ -27,6 +28,7 @@ Usage: $0 [options]
 Options:
   --var-file PATH       Terraform variable file relative to terraform/ (default: $VAR_FILE)
   --image-tag TAG       Container tag (default: current Git commit)
+  --image-reference REF Deploy an existing image reference instead of building and pushing
   -h, --help            Show this help
 EOF
 }
@@ -41,6 +43,11 @@ while [[ $# -gt 0 ]]; do
     --image-tag)
       [[ $# -ge 2 ]] || { echo "Missing value for --image-tag" >&2; exit 2; }
       IMAGE_TAG="$2"
+      shift 2
+      ;;
+    --image-reference)
+      [[ $# -ge 2 ]] || { echo "Missing value for --image-reference" >&2; exit 2; }
+      IMAGE_REFERENCE="$2"
       shift 2
       ;;
     -h|--help)
@@ -96,24 +103,32 @@ fi
 
 cd "$REPOSITORY_ROOT"
 
-echo "Initializing Terraform..."
-terraform -chdir="$TERRAFORM_DIR" init -input=false
-
-echo "Validating Terraform..."
-terraform -chdir="$TERRAFORM_DIR" validate
-
-echo "Applying Terraform..."
-terraform -chdir="$TERRAFORM_DIR" apply -input=false -auto-approve -var-file="$VAR_FILE" -var="$MASTER_AUTHORIZED_NETWORKS_VAR"
-
-echo "Configuring Docker authentication..."
-gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-
 IMAGE_REPOSITORY="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REGISTRY_REPOSITORY/$ARTIFACT_REGISTRY_REPOSITORY"
-IMAGE="$IMAGE_REPOSITORY:$IMAGE_TAG"
-echo "Building image $IMAGE..."
-docker build --tag "$IMAGE" "$REPOSITORY_ROOT"
-echo "Pushing image $IMAGE..."
-docker push "$IMAGE"
+if [[ -n "$IMAGE_REFERENCE" ]]; then
+  [[ "$IMAGE_REFERENCE" =~ @sha256:[a-f0-9]{64}$ ]] || {
+    echo "--image-reference must use an immutable sha256 digest reference." >&2
+    exit 2
+  }
+  IMAGE="$IMAGE_REFERENCE"
+else
+  echo "Initializing Terraform..."
+  terraform -chdir="$TERRAFORM_DIR" init -input=false
+
+  echo "Validating Terraform..."
+  terraform -chdir="$TERRAFORM_DIR" validate
+
+  echo "Applying Terraform..."
+  terraform -chdir="$TERRAFORM_DIR" apply -input=false -auto-approve -var-file="$VAR_FILE" -var="$MASTER_AUTHORIZED_NETWORKS_VAR"
+
+  echo "Configuring Docker authentication..."
+  gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+  IMAGE="$IMAGE_REPOSITORY:$IMAGE_TAG"
+  echo "Building image $IMAGE..."
+  docker build --tag "$IMAGE" "$REPOSITORY_ROOT"
+  echo "Pushing image $IMAGE..."
+  docker push "$IMAGE"
+fi
 
 sed -e "s|REGION-docker.pkg.dev/PROJECT_ID/nolan-sre/nolan-sre:IMAGE_DIGEST|$IMAGE|g" \
     "$MANIFEST_PATH" > "$RENDERED_MANIFEST_PATH"

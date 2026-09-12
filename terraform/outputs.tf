@@ -28,3 +28,18 @@ output "cluster_endpoint" {
   value       = google_container_cluster.main.endpoint
   sensitive   = true
 }
+
+output "github_actions_workload_identity_provider" {
+  description = "Full Workload Identity Provider resource name for GitHub Actions authentication."
+  value       = google_iam_workload_identity_pool_provider.github_actions.name
+}
+
+output "github_actions_deployer_service_account" {
+  description = "Service account email used by the GitHub Actions deployment workflow."
+  value       = google_service_account.github_actions_deployer.email
+}
+
+output "github_actions_image_repository" {
+  description = "Artifact Registry image repository used by GitHub Actions."
+  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.images.repository_id}/${google_artifact_registry_repository.images.repository_id}"
+}

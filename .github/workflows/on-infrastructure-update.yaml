@@ -1,0 +1,96 @@
+name: Terraform
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - terraform/**
+      - .github/workflows/terraform.yml
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the reviewed Terraform plan
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_master_authorized_networks: ${{ vars.TF_VAR_MASTER_AUTHORIZED_NETWORKS }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Initialize Terraform
+        run: terraform -chdir=terraform init -input=false
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=terraform fmt -check -recursive
+
+      - name: Validate Terraform
+        run: terraform -chdir=terraform validate
+
+      - name: Create plan
+        run: terraform -chdir=terraform plan -input=false -var-file=environments/dev.tfvars -out=tfplan
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: terraform/tfplan
+
+  apply:
+    if: inputs.apply
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: terraform-apply
+    env:
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_master_authorized_networks: ${{ vars.TF_VAR_MASTER_AUTHORIZED_NETWORKS }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Initialize Terraform
+        run: terraform -chdir=terraform init -input=false
+
+      - name: Download reviewed plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: terraform
+
+      - name: Apply reviewed plan
+        run: terraform -chdir=terraform apply -input=false tfplan

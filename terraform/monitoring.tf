@@ -31,11 +31,15 @@ resource "google_monitoring_service" "nolan_sre" {
 }
 
 resource "google_monitoring_slo" "availability" {
-  service             = google_monitoring_service.nolan_sre.service_id
+  service             = google_monitoring_service.nolan_sre.name
   display_name        = "${var.cluster_name} HTTP availability"
   project             = var.project_id
   goal                = 0.999
   rolling_period_days = 30
+
+  lifecycle {
+    ignore_changes = [service]
+  }
 
   request_based_sli {
     good_total_ratio {
