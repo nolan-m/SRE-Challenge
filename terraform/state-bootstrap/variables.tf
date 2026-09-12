@@ -21,7 +21,8 @@ variable "state_bucket_name" {
   default     = "nolan-sre-challenge-tfstate"
 }
 
-variable "terraform_service_account" {
-  description = "Service account allowed to read and write the Terraform state bucket."
-  type        = string
+variable "terraform_state_members" {
+  description = "IAM members allowed to read and write Terraform state, such as serviceAccount:... or user:... ."
+  type        = set(string)
+  default     = []
 }

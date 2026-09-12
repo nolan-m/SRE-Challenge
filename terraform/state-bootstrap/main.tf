@@ -14,6 +14,11 @@ provider "google" {
   region  = var.region
 }
 
+moved {
+  from = google_storage_bucket_iam_member.terraform_backend
+  to   = google_storage_bucket_iam_member.terraform_backend["serviceAccount:github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com"]
+}
+
 resource "google_project_service" "bootstrap" {
   for_each = toset([
     "cloudresourcemanager.googleapis.com",
@@ -47,7 +52,8 @@ resource "google_storage_bucket" "terraform_state" {
 }
 
 resource "google_storage_bucket_iam_member" "terraform_backend" {
-  bucket = google_storage_bucket.terraform_state.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${var.terraform_service_account}"
+  for_each = var.terraform_state_members
+  bucket   = google_storage_bucket.terraform_state.name
+  role     = "roles/storage.objectAdmin"
+  member   = each.value
 }
