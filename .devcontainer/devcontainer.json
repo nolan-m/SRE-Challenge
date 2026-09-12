@@ -1,0 +1,34 @@
+{
+  "name": "SRE Challenge GKE",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/SRE-Challenge",
+  "runArgs": [
+    "--init"
+  ],
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "containerEnv": {
+    "CLOUDSDK_CONFIG": "/home/vscode/.config/gcloud"
+  },
+  "postStartCommand": "sudo chmod 666 /var/run/docker.sock 2>/dev/null || true",
+  "postCreateCommand": "chmod +x scripts/*.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "googlecloudtools.cloudcode"
+      ],
+      "settings": {
+        "terraform.languageServer": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}
