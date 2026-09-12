@@ -89,7 +89,7 @@ resource "google_service_account_iam_member" "terraform_impersonation" {
 
 locals {
   terraform_roles = toset([
-    "roles/artifactregistry.repoAdmin",
+    "roles/artifactregistry.admin",
     "roles/compute.networkAdmin",
     "roles/container.admin",
     "roles/iam.serviceAccountAdmin",
