@@ -53,7 +53,12 @@ jobs:
         run: terraform -chdir=terraform validate
 
       - name: Create plan
-        run: terraform -chdir=terraform plan -input=false -var-file=environments/dev.tfvars -out=tfplan
+        run: |
+          refresh_flag=()
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            refresh_flag+=(-refresh=false)
+          fi
+          terraform -chdir=terraform plan -input=false "${refresh_flag[@]}" -var-file=environments/dev.tfvars -out=tfplan
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
