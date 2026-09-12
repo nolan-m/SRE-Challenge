@@ -1,0 +1,145 @@
+name: Release and deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - app/**
+      - Dockerfile
+      - kubernetes/**
+      - release-please-config.json
+      - .release-please-manifest.json
+      - .github/workflows/release-deploy.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create or update release PR
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  deploy:
+    needs: release
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - gcp
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      PROJECT_NAMESPACE: ${{ vars.PROJECT_NAMESPACE }}
+      WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+    steps:
+      - name: Check out released source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Authenticate to Google Cloud
+        id: google-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.google-auth.outputs.access_token }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.PROJECT_NAMESPACE }}/${{ env.PROJECT_NAMESPACE }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=${{ needs.release.outputs.tag_name }},enable=${{ needs.release.outputs.release_created == 'true' }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and publish image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+
+      - name: Export image reference
+        id: image-reference
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -Eeuo pipefail
+          image_repository="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PROJECT_NAMESPACE}/${PROJECT_NAMESPACE}"
+          test -n "${IMAGE_DIGEST}"
+          echo "repository=${image_repository}" >> "$GITHUB_OUTPUT"
+          echo "digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Get GKE credentials
+        run: gcloud container clusters get-credentials "${PROJECT_NAMESPACE}" --region "${REGION}" --project "${PROJECT_ID}"
+
+      - name: Render digest-pinned manifest
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image-reference.outputs.repository }}
+          IMAGE_DIGEST: ${{ steps.image-reference.outputs.digest }}
+        run: |
+          sed "s|REGION-docker.pkg.dev/PROJECT_ID/nolan-sre/nolan-sre:IMAGE_DIGEST|${IMAGE_REPOSITORY}@${IMAGE_DIGEST}|" \
+            kubernetes/manifest.yaml > kubernetes/manifest.rendered.yaml
+          ! grep -E 'REGION-docker.pkg.dev|PROJECT_ID|IMAGE_DIGEST' kubernetes/manifest.rendered.yaml
+
+      - name: Apply Kubernetes resources
+        run: kubectl apply --filename kubernetes/manifest.rendered.yaml
+
+      - name: Wait for rollout
+        run: kubectl --namespace "${PROJECT_NAMESPACE}" rollout status deployment/nolan-sre --timeout=5m
+
+      - name: Publish deployment summary
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image-reference.outputs.repository }}
+          IMAGE_DIGEST: ${{ steps.image-reference.outputs.digest }}
+        run: |
+          {
+            echo "## Deployment"
+            echo
+            echo "- Image: \\`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\\`"
+            echo "- Release: \\`${{ needs.release.outputs.tag_name || 'manifest-only' }}\\`"
+            echo "- Commit: \\`${GITHUB_SHA}\\`"
+          } >> "$GITHUB_STEP_SUMMARY"

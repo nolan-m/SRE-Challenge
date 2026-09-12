@@ -1,0 +1,50 @@
+name: PR Validation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=terraform fmt -check -recursive
+
+      - name: Initialize Terraform
+        run: terraform -chdir=terraform init -backend=false -input=false
+
+      - name: Validate Terraform
+        run: terraform -chdir=terraform validate
+
+      - name: Validate Kubernetes manifest placeholders
+        run: |
+          test "$(grep -c 'REGION-docker.pkg.dev/PROJECT_ID/nolan-sre/nolan-sre:IMAGE_DIGEST' kubernetes/manifest.yaml)" -eq 1
+          ! grep -E '(^|[^A-Za-z])TODO|FIXME' kubernetes/manifest.yaml
+
+      - name: Build container
+        run: docker build --tag nolan-sre:ci-${GITHUB_SHA} .
+
+      - name: Smoke test container
+        run: |
+          docker run --detach --name nolan-sre-ci --publish 18080:80 nolan-sre:ci-${GITHUB_SHA}
+          trap 'docker rm --force nolan-sre-ci' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18080/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1

@@ -19,7 +19,10 @@ resource "google_project_service" "required" {
     "artifactregistry.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
+    "iam.googleapis.com",
+    "iamcredentials.googleapis.com",
     "monitoring.googleapis.com",
+    "sts.googleapis.com",
   ])
 
   project            = var.project_id

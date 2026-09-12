@@ -33,6 +33,36 @@ variable "artifact_registry_repository" {
   default     = "nolan-sre"
 }
 
+variable "github_repository" {
+  description = "GitHub repository allowed to authenticate through Workload Identity Federation, in OWNER/REPOSITORY form."
+  type        = string
+  default     = ""
+}
+
+variable "github_branch" {
+  description = "GitHub branch allowed to deploy through Workload Identity Federation."
+  type        = string
+  default     = "main"
+}
+
+variable "github_workload_identity_pool_id" {
+  description = "Workload Identity Pool ID for GitHub Actions."
+  type        = string
+  default     = "github-actions"
+}
+
+variable "github_workload_identity_provider_id" {
+  description = "Workload Identity Provider ID for GitHub Actions."
+  type        = string
+  default     = "github-oidc"
+}
+
+variable "github_deployer_service_account_id" {
+  description = "Service account ID used by the GitHub Actions deployment workflow."
+  type        = string
+  default     = "github-actions-deployer"
+}
+
 variable "nodes_cidr" {
   description = "Primary subnet range reserved for GKE infrastructure."
   type        = string
