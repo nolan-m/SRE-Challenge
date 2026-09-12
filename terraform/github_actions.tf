@@ -4,6 +4,12 @@ resource "google_service_account" "github_actions_deployer" {
   project      = var.project_id
 }
 
+resource "google_service_account" "github_actions_terraform" {
+  account_id   = var.github_terraform_service_account_id
+  display_name = "GitHub Actions Terraform identity"
+  project      = var.project_id
+}
+
 resource "google_iam_workload_identity_pool" "github_actions" {
   workload_identity_pool_id = var.github_workload_identity_pool_id
   display_name              = "GitHub Actions"
@@ -39,6 +45,12 @@ resource "google_service_account_iam_member" "github_actions_impersonation" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_actions.name}/attribute.repository/${var.github_repository}"
 }
 
+resource "google_service_account_iam_member" "github_actions_terraform_impersonation" {
+  service_account_id = google_service_account.github_actions_terraform.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_actions.name}/attribute.repository/${var.github_repository}"
+}
+
 resource "google_project_iam_member" "github_actions_container_developer" {
   project = var.project_id
   role    = "roles/container.developer"
@@ -49,4 +61,25 @@ resource "google_project_iam_member" "github_actions_service_usage_consumer" {
   project = var.project_id
   role    = "roles/serviceusage.serviceUsageConsumer"
   member  = "serviceAccount:${google_service_account.github_actions_deployer.email}"
+}
+
+locals {
+  terraform_roles = toset([
+    "roles/artifactregistry.repoAdmin",
+    "roles/compute.networkAdmin",
+    "roles/container.admin",
+    "roles/iam.serviceAccountAdmin",
+    "roles/iam.serviceAccountUser",
+    "roles/iam.workloadIdentityPoolAdmin",
+    "roles/monitoring.editor",
+    "roles/resourcemanager.projectIamAdmin",
+    "roles/serviceusage.serviceUsageAdmin",
+  ])
+}
+
+resource "google_project_iam_member" "github_actions_terraform" {
+  for_each = local.terraform_roles
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.github_actions_terraform.email}"
 }

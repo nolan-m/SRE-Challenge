@@ -63,6 +63,12 @@ variable "github_deployer_service_account_id" {
   default     = "github-actions-deployer"
 }
 
+variable "github_terraform_service_account_id" {
+  description = "Service account ID used by the GitHub Actions Terraform workflow."
+  type        = string
+  default     = "github-actions-terraform"
+}
+
 variable "nodes_cidr" {
   description = "Primary subnet range reserved for GKE infrastructure."
   type        = string

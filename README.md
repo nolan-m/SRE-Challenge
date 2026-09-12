@@ -145,6 +145,7 @@ by Terraform.
 `PROJECT_NAMESPACE` = "nolan-sre"
 `GCP_WIF_PROVIDER` = "projects/93178190172/locations/global/workloadIdentityPools/github-actions/providers/github-oidc"
 `GCP_DEPLOYER_SERVICE_ACCOUNT` = github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com
+`GCP_TERRAFORM_SERVICE_ACCOUNT` = github-actions-terraform@nolan-sre-challenge.iam.gserviceaccount.com
 TF_VAR_MASTER_AUTHORIZED_NETWORKS = 
 
 3. Run deployment jobs on a patched self-hosted runner in the GCP VPC with labels `self-hosted`, `linux`, `x64`, and `gcp`. The runner requires Docker, `gcloud`, `kubectl`, outbound NAT access to GitHub and Google APIs, and network access to the GKE control plane.

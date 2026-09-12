@@ -39,6 +39,11 @@ output "github_actions_deployer_service_account" {
   value       = google_service_account.github_actions_deployer.email
 }
 
+output "github_actions_terraform_service_account" {
+  description = "Service account email used by the GitHub Actions Terraform workflow."
+  value       = google_service_account.github_actions_terraform.email
+}
+
 output "github_actions_image_repository" {
   description = "Artifact Registry image repository used by GitHub Actions."
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.images.repository_id}/${google_artifact_registry_repository.images.repository_id}"
