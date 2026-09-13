@@ -68,3 +68,26 @@ The request-based availability SLO measures successful HTTP 200 requests over a 
 The four golden signals are therefore represented as request rate (traffic), 5xx rate (errors), p95/p99 response duration (latency), and CPU request utilization (saturation).
 
 Use the dashboard and alert documentation as the starting point for incident response, then correlate load-balancer metrics with ingress, Service endpoints, Pod readiness, resource pressure, and rollout history.
+
+### Links
+
+- [Monitoring Dashboard](https://console.cloud.google.com/monitoring/dashboards/builder/1d2e2cb2-2f5c-4bb6-a0a4-f5d226b15a43;duration=PT1H?project=nolan-sre-challenge)
+- [Alert Policies](https://console.cloud.google.com/monitoring/alerting/policies?project=nolan-sre-challenge&supportedpurview=folder)
+- [Availability SLO](https://console.cloud.google.com/monitoring/services/93178190172/nolan-sre?project=nolan-sre-challenge&supportedpurview=folder&pageState=(%22interval%22:()))
+
+
+## Next Steps
+
+The current architecture provides high availability within one region through a regional Autopilot GKE cluster, multi-zone Pod placement, multiple replicas, a PodDisruptionBudget, health probes, and load-balancer backend health checks.
+
+It does not provide a cold standby cluster or automatic cross-region failover. A complete disaster-recovery design should add:
+
+- A secondary GKE cluster in another region.
+- Replicated Artifact Registry images.
+- Kubernetes manifests deployed to both clusters.
+- A global external load balancer or DNS-based failover.
+- Terraform-managed backup and restore procedures.
+- Documented failover and failback runbooks.
+- Regular disaster-recovery tests with defined RTO and RPO targets.
+
+The current design handles Pod, node, and zonal failures, but a complete regional or regional-service outage would require manual recovery or a separately provisioned standby environment.

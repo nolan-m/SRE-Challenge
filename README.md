@@ -27,7 +27,12 @@ A complete solution should include:
 * Monitoring
 * SLI/SLO dashboard
 
-## Documentation
+# Solution
+
+The solution uses Terraform to deploy secure GCP infrastructure and a regional Autopilot GKE cluster, deploys the application as a scalable Kubernetes service, and provides an automated GitHub Actions delivery pipeline. Cloud Monitoring provides alerting for traffic, errors, latency, and saturation, together with an SLI/SLO dashboard for measuring service reliability. The application is available at http://8.232.127.195/.
+
+
+# Documentation
 
 * [Deployment](docs/deployment.md): bootstrap, infrastructure deployment, verification, rollback, and teardown.
 * [CI/CD](docs/ci-cd.md): validation, releases, image publishing, authentication, and workflow boundaries.

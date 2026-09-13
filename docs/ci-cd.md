@@ -26,9 +26,9 @@ Configure these repository variables:
 | `GCP_WIF_PROVIDER` | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-actions/providers/github-oidc` |
 | `GCP_DEPLOYER_SERVICE_ACCOUNT` | `github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com` |
 | `TF_VAR_MASTER_AUTHORIZED_NETWORKS` | `[{"cidr_block":"203.0.113.10/32","display_name":"my-laptop"}]` |
+| `TF_VAR_NOTIFICATION_EMAILS` | `["YOUR_SUPPORT_EMAIL"]` |
 
 Replace `PROJECT_NUMBER` with the numeric project number found in the GCP Console. Replace the example CIDR with the trusted network allowed to reach the GKE control plane; never use `0.0.0.0/0`.
-
 
 ## Pull Request Validation
 

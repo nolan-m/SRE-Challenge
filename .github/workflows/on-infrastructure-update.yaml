@@ -30,6 +30,7 @@ jobs:
       TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
       TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_master_authorized_networks: ${{ vars.TF_VAR_MASTER_AUTHORIZED_NETWORKS }}
+      TF_VAR_notification_emails: ${{ vars.TF_VAR_NOTIFICATION_EMAILS }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -70,6 +71,7 @@ jobs:
       TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
       TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_master_authorized_networks: ${{ vars.TF_VAR_MASTER_AUTHORIZED_NETWORKS }}
+      TF_VAR_notification_emails: ${{ vars.TF_VAR_NOTIFICATION_EMAILS }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
