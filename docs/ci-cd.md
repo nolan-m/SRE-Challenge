@@ -53,7 +53,29 @@ Kubernetes is rendered with `IMAGE_REPOSITORY@sha256:DIGEST`. Mutable tags are n
 
 A Kubernetes-only change on `main` can create a release PR according to `release-please`; deployment occurs only after that PR is merged and its version tag is pushed.
 
-The workflow uses the built-in `GITHUB_TOKEN` for `release-please`. GitHub may suppress a follow-on workflow for a tag created by `GITHUB_TOKEN`; if the tag appears but deployment does not start, a dedicated GitHub App or fine-grained token may be required.
+The release job uses the `RELEASE_PLEASE_TOKEN` repository secret rather than the built-in `GITHUB_TOKEN`. This is required because GitHub suppresses follow-on workflow runs for tags created by `GITHUB_TOKEN`. Configure `RELEASE_PLEASE_TOKEN` with a GitHub App or fine-grained personal access token that can read repository metadata, write contents, and write pull requests.
+
+### Create `RELEASE_PLEASE_TOKEN`
+
+Create a fine-grained GitHub personal access token:
+
+1. Open **GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens**.
+2. Select **Generate new token**.
+3. Set a descriptive name, such as `SRE Challenge Release Please`, and choose an expiration period.
+4. Set the resource owner to `nolan-m` and grant access only to the `SRE-Challenge` repository.
+5. Grant these repository permissions:
+	- **Contents:** Read and write
+	- **Pull requests:** Read and write
+	- **Metadata:** Read-only
+6. Generate the token and copy it immediately. Never commit it or share it.
+
+Store it as a repository secret:
+
+1. Open **SRE-Challenge → Settings → Secrets and variables → Actions**.
+2. Select **New repository secret**.
+3. Set the name to `RELEASE_PLEASE_TOKEN` and paste the token as the secret value.
+
+Use an expiration and rotation process appropriate for the repository. The existing version tag will not automatically rerun deployment after this secret is added; verify the setup with the next release cycle.
 
 ## Infrastructure Changes
 
