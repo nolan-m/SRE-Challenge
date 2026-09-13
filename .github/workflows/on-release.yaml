@@ -65,6 +65,31 @@ jobs:
       - name: Install GKE authentication plugin
         run: gcloud components install gke-gcloud-auth-plugin --quiet
 
+      - name: Allow GitHub runner to reach GKE control plane
+        id: master-networks
+        env:
+          CLUSTER_NAME: ${{ env.PROJECT_NAMESPACE }}
+        run: |
+          set -Eeuo pipefail
+          runner_ip="$(curl --fail --silent --show-error https://api.ipify.org)"
+          original_networks="$(gcloud container clusters describe "${CLUSTER_NAME}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --format='value(masterAuthorizedNetworksConfig.cidrBlocks[].cidrBlock)' \
+            | paste -sd, -)"
+          [[ -n "${original_networks}" ]] || {
+            echo "The cluster has no existing master authorized networks; refusing to modify it." >&2
+            exit 1
+          }
+          updated_networks="${original_networks},${runner_ip}/32"
+          gcloud container clusters update "${CLUSTER_NAME}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --enable-master-authorized-networks \
+            --master-authorized-networks="${updated_networks}"
+          echo "original_networks=${original_networks}" >> "$GITHUB_OUTPUT"
+          echo "runner_ip=${runner_ip}" >> "$GITHUB_OUTPUT"
+
       - name: Log in to Artifact Registry
         uses: docker/login-action@v3
         with:
@@ -134,3 +159,19 @@ jobs:
             echo "- Release: \\`${{ github.ref_name }}\\`"
             echo "- Commit: \\`${GITHUB_SHA}\\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore GKE master authorized networks
+        if: always()
+        env:
+          ORIGINAL_NETWORKS: ${{ steps.master-networks.outputs.original_networks }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${ORIGINAL_NETWORKS}" ]] || {
+            echo "No saved authorized networks found; refusing to change cluster access." >&2
+            exit 1
+          }
+          gcloud container clusters update "${PROJECT_NAMESPACE}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --enable-master-authorized-networks \
+            --master-authorized-networks="${ORIGINAL_NETWORKS}"

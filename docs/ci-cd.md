@@ -83,7 +83,23 @@ The Terraform workflow initializes, formats, validates, and plans with `terrafor
 
 ## Runner Requirements
 
-The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow configures gcloud, explicitly installs `gke-gcloud-auth-plugin`, and uses it to authenticate `kubectl` to GKE. The GKE control-plane endpoint must remain reachable from GitHub-hosted runner IP ranges and restricted with trusted master authorized networks; do not use `0.0.0.0/0`.
+The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow configures gcloud, explicitly installs `gke-gcloud-auth-plugin`, temporarily appends the runner's public `/32` to the existing GKE master authorized networks, and restores the original allowlist in an `always()` cleanup step. The GKE control-plane access remains restricted; the workflow refuses to modify a cluster with no existing allowlist and never uses `0.0.0.0/0`.
+
+### Temporary GKE Access
+
+GitHub-hosted runner IP addresses are dynamic, so they cannot be permanently included in Terraform’s `master_authorized_networks`. The tag deployment workflow handles this temporarily:
+
+1. It obtains the runner’s public egress IP from `api.ipify.org`.
+2. It reads the cluster’s current master authorized CIDRs.
+3. It appends the runner IP as a `/32` and updates the cluster.
+4. It retrieves GKE credentials and deploys the digest-pinned manifest.
+5. An `if: always()` cleanup step restores the original CIDR list, even when deployment or rollout fails.
+
+This workflow preserves the existing allowlist and does not disable master authorized networks. The update is not atomic with deployment, so concurrent cluster access or Terraform applies should be avoided during the deployment window. If the GitHub runner is forcibly terminated before cleanup runs, inspect and restore the allowlist manually or run Terraform with the intended `master_authorized_networks` value.
+
+### Future Improvement
+
+Move deployment jobs to a dedicated self-hosted runner inside the GCP VPC. A VPC-hosted runner with a stable egress path can reach the private GKE control plane directly, remove the temporary GitHub IP allowlisting step, and reduce the risk of cleanup failure. The runner should be dedicated to this repository, regularly patched or rebuilt, and assigned the existing `self-hosted`, `linux`, `x64`, and `gcp` labels.
 
 ## Access Controls
 
