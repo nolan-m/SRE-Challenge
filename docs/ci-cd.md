@@ -14,6 +14,22 @@ GitHub Actions uses short-lived Google Cloud credentials through GitHub OIDC and
 
 Changes under `kubernetes/**` belong to `on-release.yaml`, not the Terraform workflow.
 
+## GitHub Actions Repository Variables
+
+Configure these repository variables:
+
+| Variable | Example value |
+| --- | --- |
+| `GCP_PROJECT_ID` | `nolan-sre-challenge` |
+| `GCP_REGION` | `us-central1` |
+| `PROJECT_NAMESPACE` | `nolan-sre` |
+| `GCP_WIF_PROVIDER` | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-actions/providers/github-oidc` |
+| `GCP_DEPLOYER_SERVICE_ACCOUNT` | `github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com` |
+| `TF_VAR_MASTER_AUTHORIZED_NETWORKS` | `[{"cidr_block":"203.0.113.10/32","display_name":"my-laptop"}]` |
+
+Replace `PROJECT_NUMBER` with the numeric project number found in the GCP Console. Replace the example CIDR with the trusted network allowed to reach the GKE control plane; never use `0.0.0.0/0`.
+
+
 ## Pull Request Validation
 
 The PR workflow checks Terraform formatting and validation, verifies that the Kubernetes manifest still contains exactly one image placeholder and no TODO/FIXME markers, builds the container, and runs it on port 18080 for an HTTP smoke test.
@@ -36,7 +52,15 @@ A Kubernetes-only change still builds and deploys a new immutable image. It crea
 
 The Terraform workflow initializes, formats, validates, and plans with `terraform/environments/dev.tfvars`. Changes merged to `main` automatically apply the reviewed plan through the protected `terraform-apply` environment. Manual dispatch also creates a plan, but applies it only when the `apply` input is enabled; the input has no effect on push-triggered runs.
 
-Required repository variables include `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SERVICE_ACCOUNT`, and `TF_VAR_MASTER_AUTHORIZED_NETWORKS`. The workflow also passes the repository name as `TF_VAR_github_repository`.
+After applying the infrastructure, retrieve the values used by GitHub Actions:
+
+```bash
+terraform -chdir=terraform output github_actions_workload_identity_provider
+terraform -chdir=terraform output github_actions_deployer_service_account
+terraform -chdir=terraform output github_actions_image_repository
+```
+
+The workflow also passes the repository name as `TF_VAR_github_repository`.
 
 ## Runner Requirements
 

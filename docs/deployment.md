@@ -43,44 +43,24 @@ State bootstrap creates the protected, versioned bucket, GitHub Workload Identit
 
 ## Provision Infrastructure
 
-Set a trusted control-plane CIDR and apply the application infrastructure:
-
-```bash
-export TF_VAR_MASTER_AUTHORIZED_NETWORKS='[{"cidr_block":"YOUR_TRUSTED_CIDR","display_name":"your-workstation"}]'
-terraform -chdir=terraform fmt -check -recursive
-terraform -chdir=terraform init -input=false
-terraform -chdir=terraform validate
-terraform -chdir=terraform plan -var-file=environments/dev.tfvars
-terraform -chdir=terraform apply -var-file=environments/dev.tfvars
-```
-
-The infrastructure creates the VPC, private Autopilot GKE cluster, Artifact Registry repository, Workload Identity bindings, load-balancer monitoring, SLO, dashboard, and alerts.
-
-After apply, inspect the values used by GitHub Actions:
-
-```bash
-terraform -chdir=terraform output github_actions_workload_identity_provider
-terraform -chdir=terraform output github_actions_deployer_service_account
-terraform -chdir=terraform output github_actions_image_repository
-```
-
-Configure these repository variables:
-
-- `GCP_PROJECT_ID`
-- `GCP_REGION` (the example is `us-central1`)
-- `PROJECT_NAMESPACE` (`nolan-sre` in the example)
-- `GCP_WIF_PROVIDER`
-- `GCP_DEPLOYER_SERVICE_ACCOUNT`
-- `TF_VAR_MASTER_AUTHORIZED_NETWORKS`
-
-## Deploy the Application Locally
-
-`scripts/deploy.sh` can apply Terraform, build and push an image, render the Kubernetes manifest, and wait for the rollout:
+Set a trusted control-plane CIDR and use the repository script to format, initialize, validate, and plan the application infrastructure:
 
 ```bash
 export MASTER_AUTHORIZED_IP=YOUR_TRUSTED_CIDR
+./scripts/plan.sh
+```
+
+Review the plan, then apply it with the deployment script:
+
+```bash
 ./scripts/deploy.sh
 ```
+
+The deployment script applies Terraform, builds and pushes the application image, applies the Kubernetes manifest, and waits for the rollout. Use `scripts/plan.sh` when you only need to inspect infrastructure changes.
+
+The infrastructure creates the VPC, private Autopilot GKE cluster, Artifact Registry repository, Workload Identity bindings, load-balancer monitoring, SLO, dashboard, and alerts.
+
+## Deploy an Existing Application Image
 
 To deploy an already-published image, use an immutable digest. This skips Terraform and image building:
 
