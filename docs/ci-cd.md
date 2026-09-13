@@ -83,7 +83,7 @@ The Terraform workflow initializes, formats, validates, and plans with `terrafor
 
 ## Runner Requirements
 
-The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow installs/configures the Google Cloud authentication and GKE tooling through its setup actions. The GKE control-plane endpoint must remain reachable from GitHub-hosted runner IP ranges and restricted with trusted master authorized networks; do not use `0.0.0.0/0`.
+The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow configures gcloud, explicitly installs `gke-gcloud-auth-plugin`, and uses it to authenticate `kubectl` to GKE. The GKE control-plane endpoint must remain reachable from GitHub-hosted runner IP ranges and restricted with trusted master authorized networks; do not use `0.0.0.0/0`.
 
 ## Access Controls
 
