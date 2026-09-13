@@ -109,6 +109,43 @@ resource "google_monitoring_dashboard" "nolan_sre" {
           }
         },
         {
+          title = "HTTP request latency"
+          xyChart = {
+            dataSets = [
+              {
+                legendTemplate = "p95"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"loadbalancing.googleapis.com/https/latencies\" resource.type=\"https_lb_rule\""
+                    aggregation = {
+                      perSeriesAligner   = "ALIGN_PERCENTILE_95"
+                      crossSeriesReducer = "REDUCE_MAX"
+                    }
+                  }
+                }
+                plotType = "LINE"
+              },
+              {
+                legendTemplate = "p99"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "metric.type=\"loadbalancing.googleapis.com/https/latencies\" resource.type=\"https_lb_rule\""
+                    aggregation = {
+                      perSeriesAligner   = "ALIGN_PERCENTILE_99"
+                      crossSeriesReducer = "REDUCE_MAX"
+                    }
+                  }
+                }
+                plotType = "LINE"
+              },
+            ]
+            yAxis = {
+              label = "milliseconds"
+              scale = "LINEAR"
+            }
+          }
+        },
+        {
           title = "Container CPU request utilization"
           xyChart = {
             dataSets = [{
@@ -215,6 +252,35 @@ resource "google_monitoring_alert_policy" "cpu" {
 
   documentation {
     content   = "NGINX CPU request utilization has exceeded 80% for ten minutes. Review HPA behavior and Pod resource requests."
+    mime_type = "text/markdown"
+  }
+}
+
+resource "google_monitoring_alert_policy" "latency" {
+  project               = var.project_id
+  display_name          = "${var.cluster_name} HTTP p95 latency"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = local.notification_channel_ids
+
+  conditions {
+    display_name = "HTTP p95 latency above 500 ms"
+    condition_threshold {
+      filter          = "metric.type=\"loadbalancing.googleapis.com/https/latencies\" resource.type=\"https_lb_rule\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 500
+      duration        = "300s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_PERCENTILE_95"
+        cross_series_reducer = "REDUCE_MAX"
+      }
+    }
+  }
+
+  documentation {
+    content   = "HTTP p95 latency has exceeded 500 ms for five minutes. Check the GKE Ingress, Service endpoints, Pod readiness, resource saturation, and recent rollout."
     mime_type = "text/markdown"
   }
 }

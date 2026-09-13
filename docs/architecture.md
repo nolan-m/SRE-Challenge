@@ -59,9 +59,12 @@ Cloud Monitoring provisions an SRE dashboard with panels for:
 
 - Traffic: HTTP request rate.
 - Errors: HTTP 5xx request rate.
+- Latency: HTTP p95 and p99 response latency.
 - Saturation: container CPU request utilization.
 - Reliability signals: container restart count.
 
-The request-based availability SLO measures successful HTTP 200 requests over a rolling 30-day window with a 99.9% goal. Configured alert policies notify email channels when 5xx traffic exceeds 1% for five minutes, CPU request utilization exceeds 80% for ten minutes, or containers restart during a five-minute window.
+The request-based availability SLO measures successful HTTP 200 requests over a rolling 30-day window with a 99.9% goal. Configured alert policies notify email channels when 5xx traffic exceeds 1% for five minutes, p95 latency exceeds 500 milliseconds for five minutes, CPU request utilization exceeds 80% for ten minutes, or containers restart during a five-minute window.
+
+The four golden signals are therefore represented as request rate (traffic), 5xx rate (errors), p95/p99 response duration (latency), and CPU request utilization (saturation).
 
 Use the dashboard and alert documentation as the starting point for incident response, then correlate load-balancer metrics with ingress, Service endpoints, Pod readiness, resource pressure, and rollout history.
