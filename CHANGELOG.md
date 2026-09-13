@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.2...v0.2.3) (2026-09-13)
+
+
+### Bug Fixes
+
+* fix allowed tags ([6ff6fe0](https://github.com/nolan-m/SRE-Challenge/commit/6ff6fe08f3bc2e10d55de24eb9e6df210dbc34f4))
+
 ## [0.2.2](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.1...v0.2.2) (2026-09-13)
 
 
