@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.1...v0.2.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* fix runner ([fe32d0c](https://github.com/nolan-m/SRE-Challenge/commit/fe32d0c0bb08a873d65f1f042784c898869d4987))
+
 ## [0.2.1](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.0...v0.2.1) (2026-09-13)
 
 
