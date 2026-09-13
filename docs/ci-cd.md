@@ -28,7 +28,7 @@ Configure these repository variables:
 | `TF_VAR_MASTER_AUTHORIZED_NETWORKS` | `[{"cidr_block":"203.0.113.10/32","display_name":"my-laptop"}]` |
 | `TF_VAR_NOTIFICATION_EMAILS` | `["YOUR_SUPPORT_EMAIL"]` |
 
-Replace `PROJECT_NUMBER` with the numeric project number found in the GCP Console. Replace the example CIDR with the trusted network allowed to reach the GKE control plane; never use `0.0.0.0/0`.
+Replace `PROJECT_NUMBER` with the numeric project number found in the GCP Console. Set `GCP_REGION` to `us-central1`; `central1` is not a valid region. Replace the example CIDR with the trusted network allowed to reach the GKE control plane; never use `0.0.0.0/0`.
 
 ## Pull Request Validation
 
@@ -87,4 +87,6 @@ The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Doc
 
 ## Access Controls
 
-The bootstrap Terraform restricts the OIDC provider to the configured repository and branch. GitHub receives short-lived credentials only through Workload Identity Federation. Configure `terraform-apply` and `terraform-destroy` as protected environments with appropriate reviewers before using the corresponding workflows.
+The bootstrap Terraform restricts the OIDC provider to the configured repository, the configured branch, and release tags beginning with `v`. GitHub receives short-lived credentials only through Workload Identity Federation. Configure `terraform-apply` and `terraform-destroy` as protected environments with appropriate reviewers before using the corresponding workflows.
+
+After changing the OIDC condition, apply `terraform/state-bootstrap` once with administrator credentials before retrying a tag deployment. The tag workflow will continue to fail authentication until the provider condition is updated in Google Cloud.

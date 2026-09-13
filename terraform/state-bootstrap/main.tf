@@ -102,7 +102,7 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
     "attribute.ref"        = "assertion.ref"
   }
 
-  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.ref == 'refs/heads/${var.github_branch}'"
+  attribute_condition = "assertion.repository == '${var.github_repository}' && (assertion.ref == 'refs/heads/${var.github_branch}' || assertion.ref.startsWith('refs/tags/v'))"
 
   lifecycle {
     prevent_destroy = true

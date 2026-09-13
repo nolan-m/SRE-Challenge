@@ -33,7 +33,7 @@ variable "github_repository" {
 }
 
 variable "github_branch" {
-  description = "GitHub branch allowed to use the Terraform identity."
+  description = "GitHub branch allowed to use the Terraform identity; version tags prefixed with v are also trusted for release deployments."
   type        = string
   default     = "main"
 }
