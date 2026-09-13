@@ -31,12 +31,12 @@ output "cluster_endpoint" {
 
 output "github_actions_workload_identity_provider" {
   description = "Full Workload Identity Provider resource name for GitHub Actions authentication."
-  value       = google_iam_workload_identity_pool_provider.github_actions.name
+  value       = "projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${var.github_workload_identity_pool_id}/providers/${var.github_workload_identity_provider_id}"
 }
 
 output "github_actions_deployer_service_account" {
   description = "Service account email used by the GitHub Actions deployment workflow."
-  value       = google_service_account.github_actions_deployer.email
+  value       = "github-actions-deployer@${var.project_id}.iam.gserviceaccount.com"
 }
 
 output "github_actions_terraform_service_account" {

@@ -24,5 +24,5 @@ resource "google_artifact_registry_repository_iam_member" "github_actions_push" 
   location   = google_artifact_registry_repository.images.location
   repository = google_artifact_registry_repository.images.repository_id
   role       = "roles/artifactregistry.writer"
-  member     = "serviceAccount:${google_service_account.github_actions_deployer.email}"
+  member     = "serviceAccount:github-actions-deployer@${var.project_id}.iam.gserviceaccount.com"
 }

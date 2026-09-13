@@ -45,41 +45,10 @@ Ideally, the solution would be in GCP, however AWS would also be acceptable.
 A complete solution should include:
 
 * Infrastructure deployed using IaC
-
 * Service deployed
-
 * Automated deployment pipeline
-
 * Monitoring
-
 * SLI/SLO dashboard
-
-
-
-## Production GKE implementation
-
-
-
-This repository contains a production-oriented deployment for the static NGINX site. The application serves `/` on TCP port 80 from the stock `nginx` image.
-
-
-
-* [Architecture](docs/architecture.md)
-
-* [Deployment guide](docs/deployment.md)
-
-* [Resilience and day-2 operations](docs/operations.md)
-
-* [Monitoring and SLOs](docs/monitoring.md)
-
-* [Dev Container setup](docs/dev-container.md)
-
-
-
-The Terraform configuration provisions a regional GKE Autopilot cluster with private nodes, VPC-native networking, Cloud NAT, Workload Identity Federation, control-plane authorized networks, Artifact Registry, and a default GKE Ingress with an ephemeral external IP. User-managed Spot node pools are not available in Autopilot; use GKE Standard with separate regular and Spot pools if Spot placement becomes a hard requirement.
-
-
-
 
 
 
@@ -99,7 +68,7 @@ The application pipeline runs validation on pull requests and uses `release-plea
 Workflow boundaries are explicit:
 
 * `terraform.yaml` runs automatically only when `terraform/**` changes. Manual dispatch remains available for reviewed plans and applies.
-* `on-state-bootstrap.yaml` runs when `terraform/state-bootstrap/**` or `scripts/bootstrap-state.sh` changes, and can also be manually dispatched.
+* `destroy-application.yaml` is manually dispatched, requires `DESTROY-APPLICATION`, and uses the protected `terraform-destroy` environment. It never targets the bootstrap state.
 * `release-deploy.yaml` runs for `app/**`, `Dockerfile`, and `kubernetes/**` changes.
 * A Kubernetes-only change builds and deploys one new SHA-tagged immutable image; it does not create an application release unless the commit uses a releasable Conventional Commit.
 
@@ -122,8 +91,8 @@ After a release PR is merged, the deployment job builds one image and publishes 
 ### Bootstrap requirements
 
 Terraform state is stored remotely in the protected GCS bucket
-`nolan-sre-challenge-tfstate`. Bootstrap that bucket once before initializing
-the main Terraform configuration:
+`nolan-sre-challenge-tfstate`. Bootstrap that bucket once locally before using
+the GitHub Actions Terraform workflow:
 
 ```bash
 ./scripts/bootstrap-state.sh --project-id nolan-sre-challenge
@@ -133,7 +102,13 @@ The script adds the active gcloud account and GitHub deployer to the bucket IAM
 policy, then prompts before copying existing local state to
 `gs://nolan-sre-challenge-tfstate/terraform/state`. The bucket is versioned,
 uses uniform bucket-level access, blocks public access, and cannot be destroyed
-by Terraform.
+by Terraform. State bootstrap is intentionally not part of the recurring CI
+pipeline because GitHub authentication depends on the WIF resources it creates.
+
+The remote state bucket, WIF pool/provider, and GitHub deployer are bootstrap
+resources and must survive application teardown. Rebuild tests should destroy
+only application resources, then rerun the Terraform apply and release/deploy
+workflows. Use the protected `destroy-application.yaml` workflow for teardown.
 
 
 

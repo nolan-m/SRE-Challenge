@@ -1,0 +1,39 @@
+name: Destroy application infrastructure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: application-infrastructure
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    environment: terraform-destroy
+    env:
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_master_authorized_networks: ${{ vars.TF_VAR_MASTER_AUTHORIZED_NETWORKS }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Initialize Terraform
+        run: terraform -chdir=terraform init -input=false
+
+      - name: Destroy application infrastructure
+        run: terraform -chdir=terraform destroy -input=false -auto-approve -var-file=environments/dev.tfvars
