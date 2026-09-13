@@ -7,7 +7,7 @@ GitHub Actions uses short-lived Google Cloud credentials through GitHub OIDC and
 | Workflow | Trigger and scope | Purpose |
 | --- | --- | --- |
 | `on-pr.yaml` | Every pull request | Terraform formatting and validation, Kubernetes placeholder checks, container build, and HTTP smoke test. |
-| `on-release.yaml` | Pushes to `main` affecting `app/**`, `Dockerfile`, `kubernetes/**`, or release metadata | Creates or updates the release PR, builds the image, publishes it, and deploys the digest. |
+| `on-release.yaml` | Pushes to `main` or creation of a `v*` version tag | Runs `release-please` on `main`; deploys only after a release tag is created by the merged release PR. |
 | `on-infrastructure-update.yaml` | Pushes to `main` affecting `terraform/**`; also manual dispatch | Plans Terraform and automatically applies push-triggered plans. Manual runs apply only when the `apply` input is enabled. |
 | `on-state-bootstrap.yaml` | State-bootstrap or bootstrap-script changes; also manual dispatch | Runs the state-bootstrap helper workflow. Bootstrap remains an administrative lifecycle. |
 | `destroy-application.yaml` | Manual dispatch | Destroys application infrastructure through the protected `terraform-destroy` environment. It does not target bootstrap state. |
@@ -36,17 +36,24 @@ The PR workflow checks Terraform formatting and validation, verifies that the Ku
 
 ## Release and Deployment
 
-`on-release.yaml` runs `release-please` on `main`. Conventional Commits determine release versions:
+The release flow has two separate stages:
+
+1. A push to `main` runs `release-please`. It creates or updates a release PR when Conventional Commits contain releasable changes. No application deployment occurs from this branch push.
+2. After the release PR is merged, `release-please` creates a `v*` version tag. That tag starts the deployment path, which checks out the tagged commit and deploys it.
+
+Conventional Commits determine release versions:
 
 - `fix:` creates a patch release.
 - `feat:` creates a minor release.
 - A breaking change creates a major release.
 
-The deployment job runs on a self-hosted runner with labels `self-hosted`, `linux`, `x64`, and `gcp`. It authenticates with OIDC, logs in to Artifact Registry, publishes a SHA tag and an optional release tag, and captures the registry digest.
+The tag deployment job runs on a self-hosted runner with labels `self-hosted`, `linux`, `x64`, and `gcp`. It authenticates with OIDC, logs in to Artifact Registry, publishes a SHA tag and the release tag, and captures the registry digest.
 
 Kubernetes is rendered with `IMAGE_REPOSITORY@sha256:DIGEST`. Mutable tags are never used as the deployment reference. The job applies the rendered manifest and waits for `deployment/nolan-sre` to complete its rollout.
 
-A Kubernetes-only change still builds and deploys a new immutable image. It creates a release only when the commit is releasable according to `release-please`.
+A Kubernetes-only change on `main` can create a release PR according to `release-please`; deployment occurs only after that PR is merged and its version tag is pushed.
+
+The workflow uses the built-in `GITHUB_TOKEN` for `release-please`. GitHub may suppress a follow-on workflow for a tag created by `GITHUB_TOKEN`; if the tag appears but deployment does not start, a dedicated GitHub App or fine-grained token may be required.
 
 ## Infrastructure Changes
 
