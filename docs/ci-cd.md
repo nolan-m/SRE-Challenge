@@ -8,7 +8,7 @@ GitHub Actions uses short-lived Google Cloud credentials through GitHub OIDC and
 | --- | --- | --- |
 | `on-pr.yaml` | Every pull request | Terraform formatting and validation, Kubernetes placeholder checks, container build, and HTTP smoke test. |
 | `on-release.yaml` | Pushes to `main` affecting `app/**`, `Dockerfile`, `kubernetes/**`, or release metadata | Creates or updates the release PR, builds the image, publishes it, and deploys the digest. |
-| `on-infrastructure-update.yaml` | Pushes to `main` affecting `terraform/**`; also manual dispatch | Plans Terraform and optionally applies a reviewed plan through `terraform-apply`. |
+| `on-infrastructure-update.yaml` | Pushes to `main` affecting `terraform/**`; also manual dispatch | Plans Terraform and automatically applies push-triggered plans. Manual runs apply only when the `apply` input is enabled. |
 | `on-state-bootstrap.yaml` | State-bootstrap or bootstrap-script changes; also manual dispatch | Runs the state-bootstrap helper workflow. Bootstrap remains an administrative lifecycle. |
 | `destroy-application.yaml` | Manual dispatch | Destroys application infrastructure through the protected `terraform-destroy` environment. It does not target bootstrap state. |
 
@@ -34,7 +34,7 @@ A Kubernetes-only change still builds and deploys a new immutable image. It crea
 
 ## Infrastructure Changes
 
-The Terraform workflow initializes, formats, validates, and plans with `terraform/environments/dev.tfvars`. Manual dispatch accepts an `apply` input; when enabled, the reviewed plan is applied through the protected `terraform-apply` environment.
+The Terraform workflow initializes, formats, validates, and plans with `terraform/environments/dev.tfvars`. Changes merged to `main` automatically apply the reviewed plan through the protected `terraform-apply` environment. Manual dispatch also creates a plan, but applies it only when the `apply` input is enabled; the input has no effect on push-triggered runs.
 
 Required repository variables include `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SERVICE_ACCOUNT`, and `TF_VAR_MASTER_AUTHORIZED_NETWORKS`. The workflow also passes the repository name as `TF_VAR_github_repository`.
 
