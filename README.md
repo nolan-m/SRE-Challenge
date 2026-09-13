@@ -38,3 +38,4 @@ The solution uses Terraform to deploy secure GCP infrastructure and a regional A
 * [CI/CD](docs/ci-cd.md): validation, releases, image publishing, authentication, and workflow boundaries.
 * [Architecture](docs/architecture.md): infrastructure, reliability, security, scaling, and monitoring.
 * [Development](docs/development.md): Dev Container setup and local development commands.
+* [Application Recovery Runbook](docs/runbook.md): diagnose failures, verify health, and recover the service safely.
