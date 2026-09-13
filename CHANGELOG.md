@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.0...v0.2.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* add release please token ([c2e91e1](https://github.com/nolan-m/SRE-Challenge/commit/c2e91e15ef6373a9894b5fcfc4f45c7ea688b2f3))
+* add release please token ([24db34c](https://github.com/nolan-m/SRE-Challenge/commit/24db34cea3510f394bf065fc6a2e4e44181009bf))
+
 ## [0.2.0](https://github.com/nolan-m/SRE-Challenge/compare/v0.1.0...v0.2.0) (2026-09-13)
 
 
