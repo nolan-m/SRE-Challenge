@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.4...v0.2.5) (2026-09-13)
+
+
+### Bug Fixes
+
+* allow github ip ([c2c8c9c](https://github.com/nolan-m/SRE-Challenge/commit/c2c8c9c54226002a22787479867a10cbcfcf8874))
+
 ## [0.2.4](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.3...v0.2.4) (2026-09-13)
 
 
