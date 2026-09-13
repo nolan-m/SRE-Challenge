@@ -52,16 +52,6 @@ A Kubernetes-only change still builds and deploys a new immutable image. It crea
 
 The Terraform workflow initializes, formats, validates, and plans with `terraform/environments/dev.tfvars`. Changes merged to `main` automatically apply the reviewed plan through the protected `terraform-apply` environment. Manual dispatch also creates a plan, but applies it only when the `apply` input is enabled; the input has no effect on push-triggered runs.
 
-After applying the infrastructure, retrieve the values used by GitHub Actions:
-
-```bash
-terraform -chdir=terraform output github_actions_workload_identity_provider
-terraform -chdir=terraform output github_actions_deployer_service_account
-terraform -chdir=terraform output github_actions_image_repository
-```
-
-The workflow also passes the repository name as `TF_VAR_github_repository`.
-
 ## Runner Requirements
 
 The GKE deployment runner requires Docker, `gcloud`, `kubectl`, the GKE authentication plugin, outbound NAT access to GitHub and Google APIs, and network access to the GKE control plane. Its control-plane access must be limited by trusted master authorized networks.

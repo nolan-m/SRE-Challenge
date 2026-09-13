@@ -31,7 +31,7 @@ resource "google_monitoring_service" "nolan_sre" {
 }
 
 resource "google_monitoring_slo" "availability" {
-  service             = google_monitoring_service.nolan_sre.name
+  service             = google_monitoring_service.nolan_sre.service_id
   display_name        = "${var.cluster_name} HTTP availability"
   project             = var.project_id
   goal                = 0.999
@@ -116,7 +116,7 @@ resource "google_monitoring_dashboard" "nolan_sre" {
                 legendTemplate = "p95"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"loadbalancing.googleapis.com/https/latencies\" resource.type=\"https_lb_rule\""
+                    filter = "metric.type=\"loadbalancing.googleapis.com/https/total_latencies\" resource.type=\"https_lb_rule\""
                     aggregation = {
                       perSeriesAligner   = "ALIGN_PERCENTILE_95"
                       crossSeriesReducer = "REDUCE_MAX"
@@ -129,7 +129,7 @@ resource "google_monitoring_dashboard" "nolan_sre" {
                 legendTemplate = "p99"
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"loadbalancing.googleapis.com/https/latencies\" resource.type=\"https_lb_rule\""
+                    filter = "metric.type=\"loadbalancing.googleapis.com/https/total_latencies\" resource.type=\"https_lb_rule\""
                     aggregation = {
                       perSeriesAligner   = "ALIGN_PERCENTILE_99"
                       crossSeriesReducer = "REDUCE_MAX"
@@ -266,7 +266,7 @@ resource "google_monitoring_alert_policy" "latency" {
   conditions {
     display_name = "HTTP p95 latency above 500 ms"
     condition_threshold {
-      filter          = "metric.type=\"loadbalancing.googleapis.com/https/latencies\" resource.type=\"https_lb_rule\""
+      filter          = "metric.type=\"loadbalancing.googleapis.com/https/total_latencies\" resource.type=\"https_lb_rule\""
       comparison      = "COMPARISON_GT"
       threshold_value = 500
       duration        = "300s"
