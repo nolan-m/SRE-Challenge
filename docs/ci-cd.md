@@ -47,7 +47,7 @@ Conventional Commits determine release versions:
 - `feat:` creates a minor release.
 - A breaking change creates a major release.
 
-The tag deployment job runs on a self-hosted runner with labels `self-hosted`, `linux`, `x64`, and `gcp`. It authenticates with OIDC, logs in to Artifact Registry, publishes a SHA tag and the release tag, and captures the registry digest.
+The tag deployment job runs on the GitHub-hosted `ubuntu-latest` runner. It authenticates with OIDC, logs in to Artifact Registry, publishes a SHA tag and the release tag, and captures the registry digest.
 
 Kubernetes is rendered with `IMAGE_REPOSITORY@sha256:DIGEST`. Mutable tags are never used as the deployment reference. The job applies the rendered manifest and waits for `deployment/nolan-sre` to complete its rollout.
 
@@ -83,7 +83,7 @@ The Terraform workflow initializes, formats, validates, and plans with `terrafor
 
 ## Runner Requirements
 
-The GKE deployment runner requires Docker, `gcloud`, `kubectl`, the GKE authentication plugin, outbound NAT access to GitHub and Google APIs, and network access to the GKE control plane. Its control-plane access must be limited by trusted master authorized networks.
+The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow installs/configures the Google Cloud authentication and GKE tooling through its setup actions. The GKE control-plane endpoint must remain reachable from GitHub-hosted runner IP ranges and restricted with trusted master authorized networks; do not use `0.0.0.0/0`.
 
 ## Access Controls
 
