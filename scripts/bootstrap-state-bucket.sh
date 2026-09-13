@@ -3,7 +3,6 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-BOOTSTRAP_DIR="$REPOSITORY_ROOT/terraform/state-bootstrap"
 PROJECT_ID="${PROJECT_ID:-}"
 BUCKET_NAME="${STATE_BUCKET_NAME:-}"
 BUCKET_LOCATION="${STATE_BUCKET_LOCATION:-US}"
@@ -18,8 +17,8 @@ Options:
   --location LOCATION   Bucket location (default: US)
   -h, --help            Show this help
 
-This script creates the state bucket when it does not exist, enables versioning,
-and imports it into terraform/state-bootstrap state. It does not delete resources.
+This script creates the state bucket when it does not exist and enables versioning.
+It does not initialize Terraform state, import resources, or delete anything.
 EOF
 }
 
@@ -57,7 +56,6 @@ done
   exit 1
 }
 command -v gcloud >/dev/null || { echo "gcloud is required." >&2; exit 1; }
-command -v terraform >/dev/null || { echo "terraform is required." >&2; exit 1; }
 
 if [[ -z "$BUCKET_NAME" ]]; then
   BUCKET_NAME="${PROJECT_ID}-tfstate"
@@ -76,17 +74,5 @@ fi
 
 echo "Enabling bucket versioning..."
 gcloud storage buckets update "gs://${BUCKET_NAME}" --versioning
-
-echo "Initializing bootstrap Terraform state..."
-terraform -chdir="$BOOTSTRAP_DIR" init -input=false
-
-if terraform -chdir="$BOOTSTRAP_DIR" state list | grep -qx 'google_storage_bucket.terraform_state'; then
-  echo "Bucket is already tracked by bootstrap Terraform."
-else
-  terraform -chdir="$BOOTSTRAP_DIR" import -input=false \
-    -var="project_id=$PROJECT_ID" \
-    -var="github_repository=${GITHUB_REPOSITORY:-nolan-m/SRE-Challenge}" \
-    google_storage_bucket.terraform_state "$BUCKET_NAME"
-fi
 
 echo "State bucket is ready: gs://${BUCKET_NAME}"

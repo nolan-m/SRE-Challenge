@@ -95,15 +95,28 @@ Terraform state is stored remotely in the protected GCS bucket
 the GitHub Actions Terraform workflow:
 
 ```bash
-./scripts/bootstrap-state.sh --project-id nolan-sre-challenge
+./scripts/bootstrap-state-bucket.sh --project-id nolan-sre-challenge
 ```
 
-The script adds the active gcloud account and GitHub deployer to the bucket IAM
-policy, then prompts before copying existing local state to
-`gs://nolan-sre-challenge-tfstate/terraform/state`. The bucket is versioned,
+Then run the bootstrap Terraform locally with administrator credentials:
+
+```bash
+terraform -chdir=terraform/state-bootstrap init
+terraform -chdir=terraform/state-bootstrap apply \
+	-var="project_id=nolan-sre-challenge" \
+	-var="github_repository=nolan-m/SRE-Challenge" \
+	-var='terraform_state_members=["user:nolan.deploy@gmail.com","serviceAccount:github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com"]'
+```
+
+Finally initialize the main Terraform backend and migrate local state if present:
+
+```bash
+terraform -chdir=terraform init -migrate-state
+```
+
+The bucket is versioned,
 uses uniform bucket-level access, blocks public access, and cannot be destroyed
-by Terraform. State bootstrap is intentionally not part of the recurring CI
-pipeline because GitHub authentication depends on the WIF resources it creates.
+by Terraform. State bootstrap is intentionally local and not part of the recurring CI pipeline.
 
 The remote state bucket, WIF pool/provider, and GitHub deployer are bootstrap
 resources and must survive application teardown. Rebuild tests should destroy

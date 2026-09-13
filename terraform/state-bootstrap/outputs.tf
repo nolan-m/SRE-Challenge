@@ -8,9 +8,9 @@ output "terraform_service_account" {
 }
 
 output "deployer_service_account" {
-  value = data.google_service_account.deployer.email
+  value = google_service_account.deployer_managed.email
 }
 
 output "workload_identity_provider" {
-  value = data.google_iam_workload_identity_pool_provider.github_actions.name
+  value = google_iam_workload_identity_pool_provider.github_actions.name
 }
