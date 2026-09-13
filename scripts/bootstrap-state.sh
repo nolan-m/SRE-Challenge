@@ -8,6 +8,7 @@ TERRAFORM_DIR="$REPOSITORY_ROOT/terraform"
 PROJECT_ID="${PROJECT_ID:-}"
 STATE_BUCKET_NAME="${STATE_BUCKET_NAME:-}"
 STATE_MEMBERS=()
+SKIP_MAIN_MIGRATION=false
 
 usage() {
   cat <<EOF
@@ -17,6 +18,7 @@ Options:
   --project-id ID       GCP project ID (required unless PROJECT_ID is set)
   --state-bucket NAME   State bucket name (default: <project-id>-tfstate)
   --state-member MEMBER Additional IAM member (repeatable)
+  --skip-main-migration Skip initializing the main Terraform backend
   -h, --help            Show this help
 
 The authenticated gcloud account is added as a state bucket member automatically.
@@ -40,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "Missing value for --state-member" >&2; exit 2; }
       STATE_MEMBERS+=("$2")
       shift 2
+      ;;
+    --skip-main-migration)
+      SKIP_MAIN_MIGRATION=true
+      shift
       ;;
     -h|--help)
       usage
@@ -72,13 +78,17 @@ ACTIVE_ACCOUNT="$(gcloud config get-value account 2>/dev/null)"
   exit 1
 }
 
-STATE_MEMBERS+=("user:${ACTIVE_ACCOUNT}")
+if [[ "$ACTIVE_ACCOUNT" == *@gserviceaccount.com ]]; then
+  STATE_MEMBERS+=("serviceAccount:${ACTIVE_ACCOUNT}")
+else
+  STATE_MEMBERS+=("user:${ACTIVE_ACCOUNT}")
+fi
 STATE_MEMBERS+=("serviceAccount:github-actions-deployer@${PROJECT_ID}.iam.gserviceaccount.com")
 
 MEMBERS_JSON="$(printf '%s\n' "${STATE_MEMBERS[@]}" | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')"
 
 echo "Initializing state bucket Terraform..."
-terraform -chdir="$BOOTSTRAP_DIR" init -input=false
+terraform -chdir="$BOOTSTRAP_DIR" init -input=false -migrate-state -force-copy
 
 echo "Applying state bucket and IAM configuration..."
 terraform -chdir="$BOOTSTRAP_DIR" apply -input=false -auto-approve \
@@ -87,7 +97,9 @@ terraform -chdir="$BOOTSTRAP_DIR" apply -input=false -auto-approve \
   -var="github_repository=${GITHUB_REPOSITORY:-nolan-m/SRE-Challenge}" \
   -var="terraform_state_members=$MEMBERS_JSON"
 
-echo "Initializing the main Terraform backend. Review the migration prompt..."
-terraform -chdir="$TERRAFORM_DIR" init -migrate-state
+if [[ "$SKIP_MAIN_MIGRATION" != true ]]; then
+  echo "Initializing the main Terraform backend. Review the migration prompt..."
+  terraform -chdir="$TERRAFORM_DIR" init -migrate-state
+fi
 
 echo "Remote Terraform state is configured in gs://${STATE_BUCKET_NAME}/terraform/state."

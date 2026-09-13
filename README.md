@@ -99,6 +99,7 @@ The application pipeline runs validation on pull requests and uses `release-plea
 Workflow boundaries are explicit:
 
 * `terraform.yaml` runs automatically only when `terraform/**` changes. Manual dispatch remains available for reviewed plans and applies.
+* `on-state-bootstrap.yaml` runs when `terraform/state-bootstrap/**` or `scripts/bootstrap-state.sh` changes, and can also be manually dispatched.
 * `release-deploy.yaml` runs for `app/**`, `Dockerfile`, and `kubernetes/**` changes.
 * A Kubernetes-only change builds and deploys one new SHA-tagged immutable image; it does not create an application release unless the commit uses a releasable Conventional Commit.
 
