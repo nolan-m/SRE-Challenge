@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.3...v0.2.4) (2026-09-13)
+
+
+### Bug Fixes
+
+* install gke auth plugin ([b2f92cd](https://github.com/nolan-m/SRE-Challenge/commit/b2f92cdbe49123d1b3f5960766fdf8cb417eb361))
+
 ## [0.2.3](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.2...v0.2.3) (2026-09-13)
 
 
