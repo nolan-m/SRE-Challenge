@@ -116,6 +116,9 @@ metadata:
   namespace: nolan-sre
   labels:
     app.kubernetes.io/name: nolan-sre
+  annotations:
+    # Standalone NEG backing the cross-region Global External LB (terraform/load_balancer.tf).
+    cloud.google.com/neg: '{"exposed_ports": {"80":{"name": "nolan-sre-neg"}}}'
 spec:
   type: ClusterIP
   selector:
@@ -218,22 +221,3 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: nolan-sre
-  namespace: nolan-sre
-  annotations:
-    kubernetes.io/ingress.class: gce
-spec:
-  rules:
-    - http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: nolan-sre
-                port:
-                  name: http

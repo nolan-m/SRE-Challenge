@@ -1,0 +1,208 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Existing release tag to redeploy (for example v1.2.3)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      SECONDARY_REGION: ${{ vars.GCP_SECONDARY_REGION }}
+      SECONDARY_CLUSTER_NAME: ${{ vars.GCP_SECONDARY_CLUSTER_NAME }}
+      PROJECT_NAMESPACE: ${{ vars.PROJECT_NAMESPACE }}
+      WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate manual rollback input
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -Eeuo pipefail
+          if ! [[ "${{ inputs.image_tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+)*$ ]]; then
+            echo "Manual deployment requires a release tag like v1.2.3." >&2
+            exit 1
+          fi
+
+      - name: Check out released source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Authenticate to Google Cloud
+        id: google-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install GKE authentication plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Allow GitHub runner to reach GKE control planes
+        id: master-networks
+        run: |
+          set -Eeuo pipefail
+          runner_ip="$(curl --fail --silent --show-error https://api.ipify.org)"
+          echo "runner_ip=${runner_ip}" >> "$GITHUB_OUTPUT"
+          for pair in "${PROJECT_NAMESPACE}:${REGION}:primary" "${SECONDARY_CLUSTER_NAME}:${SECONDARY_REGION}:secondary"; do
+            cluster="${pair%%:*}"
+            rest="${pair#*:}"
+            cluster_region="${rest%%:*}"
+            label="${rest##*:}"
+            original_networks="$(gcloud container clusters describe "${cluster}" \
+              --region "${cluster_region}" \
+              --project "${PROJECT_ID}" \
+              --format='value(masterAuthorizedNetworksConfig.cidrBlocks[].cidrBlock)' \
+              | paste -sd, -)"
+            [[ -n "${original_networks}" ]] || {
+              echo "The ${label} cluster has no existing master authorized networks; refusing to modify it." >&2
+              exit 1
+            }
+            echo "original_networks_${label}=${original_networks}" >> "$GITHUB_OUTPUT"
+            updated_networks="${original_networks},${runner_ip}/32"
+            gcloud container clusters update "${cluster}" \
+              --region "${cluster_region}" \
+              --project "${PROJECT_ID}" \
+              --enable-master-authorized-networks \
+              --master-authorized-networks="${updated_networks}"
+          done
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.google-auth.outputs.access_token }}
+
+      - name: Resolve existing image digest
+        if: github.event_name == 'workflow_dispatch'
+        id: resolve-image-reference
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -Eeuo pipefail
+          image_repository="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PROJECT_NAMESPACE}/${PROJECT_NAMESPACE}"
+          image_reference="${image_repository}:${IMAGE_TAG}"
+          digest="$(gcloud artifacts docker images describe "${image_reference}" --format='value(image_summary.digest)')"
+          if [[ -z "${digest}" ]]; then
+            echo "Tag ${IMAGE_TAG} was not found in Artifact Registry." >&2
+            exit 1
+          fi
+          echo "repository=${image_repository}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate image metadata
+        if: github.event_name != 'workflow_dispatch'
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.PROJECT_NAMESPACE }}/${{ env.PROJECT_NAMESPACE }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and publish image
+        if: github.event_name != 'workflow_dispatch'
+        id: build-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+
+      - name: Export built image reference
+        if: github.event_name != 'workflow_dispatch'
+        id: build-image-reference
+        env:
+          IMAGE_DIGEST: ${{ steps.build-image.outputs.digest }}
+        run: |
+          set -Eeuo pipefail
+          image_repository="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PROJECT_NAMESPACE}/${PROJECT_NAMESPACE}"
+          test -n "${IMAGE_DIGEST}"
+          echo "repository=${image_repository}" >> "$GITHUB_OUTPUT"
+          echo "digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Render digest-pinned manifest
+        env:
+          IMAGE_REPOSITORY: ${{ steps.build-image-reference.outputs.repository || steps.resolve-image-reference.outputs.repository }}
+          IMAGE_DIGEST: ${{ steps.build-image-reference.outputs.digest || steps.resolve-image-reference.outputs.digest }}
+        run: |
+          sed "s|REGION-docker.pkg.dev/PROJECT_ID/nolan-sre/nolan-sre:IMAGE_DIGEST|${IMAGE_REPOSITORY}@${IMAGE_DIGEST}|" \
+            kubernetes/manifest.yaml > kubernetes/manifest.rendered.yaml
+          ! grep -E 'REGION-docker.pkg.dev|PROJECT_ID|IMAGE_DIGEST' kubernetes/manifest.rendered.yaml
+
+      - name: Apply Kubernetes resources to both regions
+        run: |
+          set -Eeuo pipefail
+          for pair in "${PROJECT_NAMESPACE}:${REGION}" "${SECONDARY_CLUSTER_NAME}:${SECONDARY_REGION}"; do
+            cluster="${pair%%:*}"
+            cluster_region="${pair##*:}"
+            echo "--- ${cluster} (${cluster_region}) ---"
+            gcloud container clusters get-credentials "${cluster}" --region "${cluster_region}" --project "${PROJECT_ID}"
+            kubectl apply --filename kubernetes/manifest.rendered.yaml
+            kubectl --namespace "${PROJECT_NAMESPACE}" rollout status deployment/nolan-sre --timeout=5m
+          done
+
+      - name: Publish deployment summary
+        env:
+          IMAGE_REPOSITORY: ${{ steps.build-image-reference.outputs.repository || steps.resolve-image-reference.outputs.repository }}
+          IMAGE_DIGEST: ${{ steps.build-image-reference.outputs.digest || steps.resolve-image-reference.outputs.digest }}
+          DEPLOY_TRIGGER: ${{ github.event_name == 'workflow_dispatch' && format('manual rollback of {0}', inputs.image_tag) || format('tag {0}', github.ref_name) }}
+          DEPLOY_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || github.ref_name }}
+        run: |
+          {
+            echo "## Deployment"
+            echo
+            echo "- Trigger: \`${DEPLOY_TRIGGER}\`"
+            echo "- Image: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"
+            echo "- Release: \`${DEPLOY_RELEASE}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore GKE master authorized networks
+        if: always()
+        env:
+          ORIGINAL_NETWORKS_PRIMARY: ${{ steps.master-networks.outputs.original_networks_primary }}
+          ORIGINAL_NETWORKS_SECONDARY: ${{ steps.master-networks.outputs.original_networks_secondary }}
+        run: |
+          set -Eeuo pipefail
+          for pair in "${PROJECT_NAMESPACE}:${REGION}:${ORIGINAL_NETWORKS_PRIMARY}" "${SECONDARY_CLUSTER_NAME}:${SECONDARY_REGION}:${ORIGINAL_NETWORKS_SECONDARY}"; do
+            cluster="${pair%%:*}"
+            rest="${pair#*:}"
+            cluster_region="${rest%%:*}"
+            original_networks="${rest#*:}"
+            [[ -n "${original_networks}" ]] || {
+              echo "No saved authorized networks found for ${cluster}; refusing to change cluster access." >&2
+              exit 1
+            }
+            gcloud container clusters update "${cluster}" \
+              --region "${cluster_region}" \
+              --project "${PROJECT_ID}" \
+              --enable-master-authorized-networks \
+              --master-authorized-networks="${original_networks}"
+          done

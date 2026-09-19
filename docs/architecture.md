@@ -4,33 +4,41 @@
 
 The platform runs in Google Cloud:
 
-- A custom regional VPC contains a GKE subnet with separate secondary ranges for Pods and Services.
-- Cloud Router and Cloud NAT provide controlled outbound access for private nodes.
-- Regional Autopilot GKE uses private nodes, a private control-plane peering range, a regular release channel, and master authorized networks for control-plane access.
-- Artifact Registry stores application images.
-- A GKE Ingress provisions the external HTTP load balancer. The application Service remains `ClusterIP` inside the cluster.
+- A custom global VPC contains a regional GKE subnet in each of two regions, each with separate secondary ranges for Pods and Services.
+- A Cloud Router and Cloud NAT in each region provide controlled outbound access for private nodes.
+- Two regional Autopilot GKE clusters (primary and secondary, in different regions) use private nodes, a private control-plane peering range, a regular release channel, and master authorized networks for control-plane access.
+- Artifact Registry stores application images, shared by both clusters.
+- A global external HTTP Application Load Balancer, backed by standalone Network Endpoint Groups (NEGs) in both regions, is the single public entry point. The application Service remains `ClusterIP` inside each cluster and is annotated to expose a standalone NEG.
 - Terraform state is stored in a versioned GCS bucket with uniform bucket-level access, public access prevention, and deletion protection.
 
 The state-bootstrap Terraform configuration owns the state bucket IAM, Workload Identity Pool and provider, and GitHub service accounts. Application Terraform owns the runtime infrastructure.
 
 ## Application Runtime
 
-The Kubernetes manifest creates the `nolan-sre` namespace, service account, Deployment, ClusterIP Service, Ingress, HorizontalPodAutoscaler, PodDisruptionBudget, and NetworkPolicies.
+The Kubernetes manifest creates the `nolan-sre` namespace, service account, Deployment, ClusterIP Service (annotated for a standalone NEG), HorizontalPodAutoscaler, PodDisruptionBudget, and NetworkPolicies. The identical manifest is applied to both the primary and secondary clusters.
 
 The Deployment starts with three replicas and uses a rolling update with zero unavailable replicas and one surge replica. Images are pinned by SHA-256 digest. Readiness and liveness probes protect traffic and restart unhealthy containers.
 
-## Reliability
+## Reliability and Cross-Region Failover
 
 Reliability controls include:
 
-- Three minimum replicas and a PodDisruptionBudget requiring two available Pods.
-- Topology spreading across zones and hostnames.
+- Two active-active regional Autopilot GKE clusters, each with three minimum replicas and a PodDisruptionBudget requiring two available Pods.
+- Topology spreading across zones and hostnames within each cluster.
 - Readiness, liveness, and graceful pre-stop behavior.
 - GKE maintenance windows and deletion protection.
 - Immutable image references and rollout verification.
 - A 30-day, 99.9% request-based availability SLO.
 
-The deployment process waits for rollout completion before reporting success. A failed rollout should be investigated with Pod events, readiness failures, recent revisions, and ingress/backend health.
+### How Cross-Region Failover Works
+
+Both clusters run the full workload continuously and serve live production traffic at the same time (active-active, not cold standby) behind a single global external Application Load Balancer with one static IP address. The load balancer's backend service holds standalone NEGs from every zone in both regions, and continuously health-checks every backend endpoint over HTTP.
+
+When a region's endpoints stop passing health checks (Pod, node, or full regional failure), the load balancer stops routing new connections to that region's backends and shifts 100% of traffic to the remaining healthy region — automatically, using the same IP address, with no DNS change and no client reconfiguration required. Detection time is governed by the health check's interval and unhealthy threshold (default: ~10s interval, 3 consecutive failures, so roughly 30-40 seconds). Failback is automatic and symmetric: once the affected region's endpoints pass health checks again, the load balancer resumes distributing traffic to both regions.
+
+Because the application is a stateless static site with no database or persisted state, failover is a pure traffic-routing concern; there is no data replication or RPO to manage. Use `scripts/simulate-failover.sh` to run a non-destructive DR test that drains one region and confirms recovery timing.
+
+The deployment process waits for rollout completion on both clusters before reporting success. A failed rollout should be investigated with Pod events, readiness failures, recent revisions, and backend-service health.
 
 ## Scaling
 
@@ -78,16 +86,11 @@ Use the dashboard and alert documentation as the starting point for incident res
 
 ## Next Steps
 
-The current architecture provides high availability within one region through a regional Autopilot GKE cluster, multi-zone Pod placement, multiple replicas, a PodDisruptionBudget, health probes, and load-balancer backend health checks.
+The current architecture provides cross-region high availability through two active-active regional Autopilot GKE clusters, a global external load balancer with automatic health-check-based failover, multi-zone Pod placement, multiple replicas, a PodDisruptionBudget, health probes, and load-balancer backend health checks.
 
-It does not provide a cold standby cluster or automatic cross-region failover. A complete disaster-recovery design should add:
+Further hardening to consider:
 
-- A secondary GKE cluster in another region.
-- Replicated Artifact Registry images.
-- Kubernetes manifests deployed to both clusters.
-- A global external load balancer or DNS-based failover.
-- Terraform-managed backup and restore procedures.
-- Documented failover and failback runbooks.
-- Regular disaster-recovery tests with defined RTO and RPO targets.
-
-The current design handles Pod, node, and zonal failures, but a complete regional or regional-service outage would require manual recovery or a separately provisioned standby environment.
+- Automated, scheduled DR game days using `scripts/simulate-failover.sh` with alerting on detection/recovery time regressions.
+- A CDN or edge caching layer if the static content profile changes.
+- Terraform-managed backup and restore procedures if the application gains persistent state.
+- A third region or additional zonal redundancy if availability requirements increase further.

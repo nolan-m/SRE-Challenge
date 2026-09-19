@@ -53,9 +53,15 @@ done
 
 TFVARS_PATH="$TERRAFORM_DIR/$VAR_FILE"
 [[ -f "$TFVARS_PATH" ]] || { echo "Terraform variable file not found: $TFVARS_PATH" >&2; exit 1; }
-PROJECT_ID="$(sed -nE 's/^[[:space:]]*project_id[[:space:]]*=[[:space:]]*"([^"]+)".*$/\1/p' "$TFVARS_PATH" | head -n 1)"
-REGION="$(sed -nE 's/^[[:space:]]*region[[:space:]]*=[[:space:]]*"([^"]+)".*$/\1/p' "$TFVARS_PATH" | head -n 1)"
-[[ -n "$PROJECT_ID" && -n "$REGION" ]] || { echo "The selected tfvars file must define project_id and region." >&2; exit 1; }
+read_tfvar() {
+  local name="$1"
+  sed -nE "s/^[[:space:]]*$name[[:space:]]*=[[:space:]]*\"([^\"]+)\".*\$/\1/p" "$TFVARS_PATH" | head -n 1
+}
+PROJECT_ID="$(read_tfvar project_id)"
+REGION="$(read_tfvar region)"
+SECONDARY_REGION="$(read_tfvar secondary_region)"
+SECONDARY_CLUSTER_NAME="$(read_tfvar secondary_cluster_name)"
+[[ -n "$PROJECT_ID" && -n "$REGION" && -n "$SECONDARY_REGION" && -n "$SECONDARY_CLUSTER_NAME" ]] || { echo "The selected tfvars file must define project_id, region, secondary_region, and secondary_cluster_name." >&2; exit 1; }
 [[ -n "$MASTER_AUTHORIZED_IP" ]] || {
   echo "Set MASTER_AUTHORIZED_IP to a trusted control-plane CIDR before running this script." >&2
   exit 1
@@ -73,13 +79,17 @@ fi
 
 cd "$REPOSITORY_ROOT"
 if [[ "$SKIP_KUBERNETES" != true ]]; then
-  echo "Fetching cluster credentials..."
-  if gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION" --project "$PROJECT_ID"; then
-    echo "Deleting Kubernetes namespace..."
-    kubectl delete namespace "$NAMESPACE" --ignore-not-found=true --wait=true
-  else
-    echo "Unable to fetch cluster credentials; continuing to Terraform destroy." >&2
-  fi
+  for cluster_region in "$CLUSTER_NAME:$REGION" "$SECONDARY_CLUSTER_NAME:$SECONDARY_REGION"; do
+    cluster="${cluster_region%%:*}"
+    region="${cluster_region##*:}"
+    echo "Fetching credentials for $cluster ($region)..."
+    if gcloud container clusters get-credentials "$cluster" --region "$region" --project "$PROJECT_ID"; then
+      echo "Deleting Kubernetes namespace..."
+      kubectl delete namespace "$NAMESPACE" --ignore-not-found=true --wait=true
+    else
+      echo "Unable to fetch credentials for $cluster; continuing." >&2
+    fi
+  done
 fi
 
 echo "Destroying Terraform infrastructure..."

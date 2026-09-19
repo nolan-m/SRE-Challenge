@@ -73,10 +73,12 @@ read_tfvar() {
 PROJECT_ID="$(read_tfvar project_id)"
 REGION="$(read_tfvar region)"
 CLUSTER_NAME="$(read_tfvar cluster_name)"
+SECONDARY_REGION="$(read_tfvar secondary_region)"
+SECONDARY_CLUSTER_NAME="$(read_tfvar secondary_cluster_name)"
 ARTIFACT_REGISTRY_REPOSITORY="$(read_tfvar artifact_registry_repository)"
-NAMESPACE="$CLUSTER_NAME"
-[[ -n "$PROJECT_ID" && -n "$REGION" && -n "$CLUSTER_NAME" && -n "$ARTIFACT_REGISTRY_REPOSITORY" ]] || {
-  echo "The selected tfvars file must define project_id, region, cluster_name, and artifact_registry_repository." >&2
+NAMESPACE="nolan-sre"
+[[ -n "$PROJECT_ID" && -n "$REGION" && -n "$CLUSTER_NAME" && -n "$SECONDARY_REGION" && -n "$SECONDARY_CLUSTER_NAME" && -n "$ARTIFACT_REGISTRY_REPOSITORY" ]] || {
+  echo "The selected tfvars file must define project_id, region, cluster_name, secondary_region, secondary_cluster_name, and artifact_registry_repository." >&2
   exit 1
 }
 [[ "$PROJECT_ID" != replace-with-your-gcp-project-id ]] || {
@@ -137,18 +139,22 @@ if grep -qE 'REGION-docker.pkg.dev|PROJECT_ID' "$RENDERED_MANIFEST_PATH"; then
   exit 1
 fi
 
-echo "Configuring GKE credentials..."
-gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION" --project "$PROJECT_ID"
-echo "Applying Kubernetes resources..."
-kubectl apply --filename "$RENDERED_MANIFEST_PATH"
-echo "Waiting for rollout..."
-kubectl --namespace "$NAMESPACE" rollout status "deployment/$CLUSTER_NAME" --timeout=5m
+echo "Configuring GKE credentials and applying to both regions..."
+for cluster_region in "$CLUSTER_NAME:$REGION" "$SECONDARY_CLUSTER_NAME:$SECONDARY_REGION"; do
+  cluster="${cluster_region%%:*}"
+  region="${cluster_region##*:}"
+  echo "--- $cluster ($region) ---"
+  gcloud container clusters get-credentials "$cluster" --region "$region" --project "$PROJECT_ID"
+  kubectl apply --filename "$RENDERED_MANIFEST_PATH"
+  echo "Waiting for rollout..."
+  kubectl --namespace "$NAMESPACE" rollout status "deployment/nolan-sre" --timeout=5m
+done
 
-INGRESS_IP="$(kubectl --namespace "$NAMESPACE" get ingress "$CLUSTER_NAME" --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+LOAD_BALANCER_IP="$(terraform -chdir="$TERRAFORM_DIR" output -raw load_balancer_ip 2>/dev/null || true)"
 echo "Deployment completed."
 echo "Image: $IMAGE"
-if [[ -n "$INGRESS_IP" ]]; then
-  echo "GKE Ingress external IP: $INGRESS_IP"
+if [[ -n "$LOAD_BALANCER_IP" ]]; then
+  echo "Global load balancer IP: http://$LOAD_BALANCER_IP/"
 else
-  echo "GKE is still provisioning the Ingress external IP. Check with: kubectl --namespace $NAMESPACE get ingress $CLUSTER_NAME"
+  echo "Load balancer IP not available yet. Apply terraform/load_balancer.tf after confirming NEGs exist in both regions, then check: terraform -chdir=$TERRAFORM_DIR output load_balancer_ip"
 fi

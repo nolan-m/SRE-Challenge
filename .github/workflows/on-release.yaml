@@ -1,24 +1,20 @@
-name: Release and deploy
+name: Release
 
 on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
 
 concurrency:
-  group: release-deploy-main
+  group: release-please-main
   cancel-in-progress: false
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -32,146 +28,3 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-  deploy:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.GCP_REGION }}
-      PROJECT_NAMESPACE: ${{ vars.PROJECT_NAMESPACE }}
-      WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
-      DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-    steps:
-      - name: Check out released source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
-      - name: Authenticate to Google Cloud
-        id: google-auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
-          token_format: access_token
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Install GKE authentication plugin
-        run: gcloud components install gke-gcloud-auth-plugin --quiet
-
-      - name: Allow GitHub runner to reach GKE control plane
-        id: master-networks
-        env:
-          CLUSTER_NAME: ${{ env.PROJECT_NAMESPACE }}
-        run: |
-          set -Eeuo pipefail
-          runner_ip="$(curl --fail --silent --show-error https://api.ipify.org)"
-          original_networks="$(gcloud container clusters describe "${CLUSTER_NAME}" \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --format='value(masterAuthorizedNetworksConfig.cidrBlocks[].cidrBlock)' \
-            | paste -sd, -)"
-          [[ -n "${original_networks}" ]] || {
-            echo "The cluster has no existing master authorized networks; refusing to modify it." >&2
-            exit 1
-          }
-          updated_networks="${original_networks},${runner_ip}/32"
-          gcloud container clusters update "${CLUSTER_NAME}" \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --enable-master-authorized-networks \
-            --master-authorized-networks="${updated_networks}"
-          echo "original_networks=${original_networks}" >> "$GITHUB_OUTPUT"
-          echo "runner_ip=${runner_ip}" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGION }}-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.google-auth.outputs.access_token }}
-
-      - name: Generate image metadata
-        id: metadata
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.PROJECT_NAMESPACE }}/${{ env.PROJECT_NAMESPACE }}
-          tags: |
-            type=raw,value=sha-${{ github.sha }}
-            type=raw,value=${{ github.ref_name }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-
-      - name: Build and publish image
-        id: image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
-
-      - name: Export image reference
-        id: image-reference
-        env:
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-        run: |
-          set -Eeuo pipefail
-          image_repository="${REGION}-docker.pkg.dev/${PROJECT_ID}/${PROJECT_NAMESPACE}/${PROJECT_NAMESPACE}"
-          test -n "${IMAGE_DIGEST}"
-          echo "repository=${image_repository}" >> "$GITHUB_OUTPUT"
-          echo "digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
-
-      - name: Get GKE credentials
-        run: gcloud container clusters get-credentials "${PROJECT_NAMESPACE}" --region "${REGION}" --project "${PROJECT_ID}"
-
-      - name: Render digest-pinned manifest
-        env:
-          IMAGE_REPOSITORY: ${{ steps.image-reference.outputs.repository }}
-          IMAGE_DIGEST: ${{ steps.image-reference.outputs.digest }}
-        run: |
-          sed "s|REGION-docker.pkg.dev/PROJECT_ID/nolan-sre/nolan-sre:IMAGE_DIGEST|${IMAGE_REPOSITORY}@${IMAGE_DIGEST}|" \
-            kubernetes/manifest.yaml > kubernetes/manifest.rendered.yaml
-          ! grep -E 'REGION-docker.pkg.dev|PROJECT_ID|IMAGE_DIGEST' kubernetes/manifest.rendered.yaml
-
-      - name: Apply Kubernetes resources
-        run: kubectl apply --filename kubernetes/manifest.rendered.yaml
-
-      - name: Wait for rollout
-        run: kubectl --namespace "${PROJECT_NAMESPACE}" rollout status deployment/nolan-sre --timeout=5m
-
-      - name: Publish deployment summary
-        env:
-          IMAGE_REPOSITORY: ${{ steps.image-reference.outputs.repository }}
-          IMAGE_DIGEST: ${{ steps.image-reference.outputs.digest }}
-        run: |
-          {
-            echo "## Deployment"
-            echo
-            echo "- Image: \\`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\\`"
-            echo "- Release: \\`${{ github.ref_name }}\\`"
-            echo "- Commit: \\`${GITHUB_SHA}\\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Restore GKE master authorized networks
-        if: always()
-        env:
-          ORIGINAL_NETWORKS: ${{ steps.master-networks.outputs.original_networks }}
-        run: |
-          set -Eeuo pipefail
-          [[ -n "${ORIGINAL_NETWORKS}" ]] || {
-            echo "No saved authorized networks found; refusing to change cluster access." >&2
-            exit 1
-          }
-          gcloud container clusters update "${PROJECT_NAMESPACE}" \
-            --region "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --enable-master-authorized-networks \
-            --master-authorized-networks="${ORIGINAL_NETWORKS}"

@@ -4,36 +4,40 @@ Use this runbook when the application is unavailable, unhealthy, or a deployment
 
 ## Scope and Service Details
 
-- GKE cluster: `nolan-sre`
-- Region: `us-central1`
-- Namespace: `nolan-sre`
+- Primary GKE cluster: `nolan-sre` (region `us-central1`)
+- Secondary (failover) GKE cluster: `nolan-sre-secondary` (region `us-east1`)
+- Namespace: `nolan-sre` (identical in both clusters)
 - Deployment: `nolan-sre`
-- Service: `nolan-sre`
+- Service: `nolan-sre` (annotated with a standalone NEG backing the global load balancer)
 - Container: `nginx`
 - Application protocol: HTTP
+- Global load balancer: single static IP, backend service `nolan-sre-backend`, no domain or TLS
 
-Set the project and connect to the cluster:
+Set the project and connect to a cluster (repeat for the other region as needed):
 
 ```bash
 gcloud config set project nolan-sre-challenge
 gcloud container clusters get-credentials nolan-sre \
   --region us-central1 \
   --project nolan-sre-challenge
+
+gcloud container clusters get-credentials nolan-sre-secondary \
+  --region us-east1 \
+  --project nolan-sre-challenge
 ```
 
 ## 1. Establish Impact
 
-Check the Pods, rollout, Service, and Ingress:
+Check the Pods, rollout, and Service on the affected cluster (both clusters run the same workload active-active):
 
 ```bash
 kubectl -n nolan-sre get pods -o wide
 kubectl -n nolan-sre get deployment nolan-sre
 kubectl -n nolan-sre rollout status deployment/nolan-sre --timeout=5m
 kubectl -n nolan-sre get service nolan-sre
-kubectl -n nolan-sre get ingress nolan-sre
 ```
 
-A healthy baseline is three ready Pods, a completed rollout, populated Service endpoints, and an Ingress with an external IP.
+A healthy baseline is three ready Pods, a completed rollout, and populated Service endpoints. Since both regions serve traffic simultaneously, also check whether the other region is absorbing load normally (see Section 5).
 
 Check recent events:
 
@@ -97,7 +101,7 @@ In another terminal:
 curl --fail --verbose http://127.0.0.1:8080/
 ```
 
-If the internal test fails, continue investigating the Pods, Service selectors, endpoints, and NetworkPolicies. If it succeeds, continue with Ingress diagnosis.
+If the internal test fails, continue investigating the Pods, Service selectors, endpoints, and NetworkPolicies. If it succeeds, continue with load-balancer diagnosis.
 
 ## 4. Recover a Failed Application Release
 
@@ -120,42 +124,50 @@ Do not roll back to a mutable tag. Use a digest that has already been verified i
 
 ## 5. Diagnose External Access
 
-Inspect the Ingress and its events:
-
-```bash
-kubectl -n nolan-sre describe ingress nolan-sre
-kubectl -n nolan-sre get ingress nolan-sre -o wide
-```
-
-The Ingress should have an external IP and its application backend should report `HEALTHY`:
-
-```bash
-kubectl -n nolan-sre get ingress nolan-sre \
-  -o jsonpath='{.metadata.annotations.ingress\\.kubernetes\\.io/backends}'
-echo
-```
-
-Retrieve the application backend name and check its health in the global load balancer:
+The application is served by a single global external HTTP load balancer with standalone NEG backends in both regions (no per-cluster Ingress). List the backend service and check its health per region:
 
 ```bash
 gcloud compute backend-services list \
   --project nolan-sre-challenge
 
-gcloud compute backend-services get-health \
-  BACKEND_SERVICE_NAME \
+gcloud compute backend-services get-health nolan-sre-backend \
   --global \
   --project nolan-sre-challenge
 ```
 
-Test the provisioned address over HTTP. The current manifest does not configure TLS:
+Each entry reports the zone, NEG, and `healthState` (`HEALTHY`, `UNHEALTHY`, or `UNKNOWN`). A fully healthy baseline shows `HEALTHY` for endpoints in both `us-central1` and `us-east1` zones.
+
+Get the load balancer's static IP and test it over HTTP (no TLS is configured):
 
 ```bash
-curl --fail --verbose http://EXTERNAL_IP/
+terraform -chdir=terraform output -raw load_balancer_ip
+curl --fail --verbose http://LOAD_BALANCER_IP/
 ```
 
-If the backend is `Unknown`, allow time for GKE to synchronize the NEG and health check. If it is `UNHEALTHY`, inspect the Ingress events, Service endpoints, readiness probes, and backend health details.
+If a backend is `UNKNOWN`, allow time for GKE to synchronize the NEG and health check. If it is `UNHEALTHY`, inspect that region's Service endpoints and readiness probes; traffic should already be flowing from the other, healthy region without any manual DNS or configuration change.
 
-## 6. Check Monitoring
+## 6. Regional Failover
+
+Both clusters are active-active behind the same global load balancer, so a single-region failure is expected to self-heal without intervention once that region's backends report `UNHEALTHY` (Section 5). Use this section to confirm and, if needed, test that behavior.
+
+Confirm which regions are currently healthy:
+
+```bash
+gcloud compute backend-services get-health nolan-sre-backend --global --project nolan-sre-challenge
+```
+
+To run a non-destructive failover drill (drains one region's replicas, confirms the backend goes `UNHEALTHY`, then restores it and confirms recovery):
+
+```bash
+./scripts/simulate-failover.sh --target primary
+./scripts/simulate-failover.sh --target secondary
+```
+
+The script never touches Terraform state, master-authorized-networks, or DNS, and requires typing `FAILOVER` to confirm unless `--force` is passed. Use `--no-restore` to leave a region drained for extended testing, then restore manually with `kubectl -n nolan-sre scale deployment/nolan-sre --replicas=N`.
+
+If a full regional outage does not recover automatically within a few minutes of the region reporting healthy again, check the HPA (`kubectl -n nolan-sre get hpa`), node/pod scheduling in that cluster, and the backend service's health check configuration in `terraform/load_balancer.tf`.
+
+## 7. Check Monitoring
 
 Review the Cloud Monitoring links in [Architecture](architecture.md) for request rate, 5xx errors, p95/p99 latency, CPU saturation, restart count, alerts, and the availability SLO.
 
@@ -169,14 +181,14 @@ kubectl -n nolan-sre describe deployment nolan-sre
 
 Check the SLO and alert timestamps before and after a rollback to confirm recovery.
 
-## 7. Escalate or Stop
+## 8. Escalate or Stop
 
 Stop automated changes and escalate when:
 
-- All replicas are unavailable after a known-good digest rollback.
-- The Ingress remains unhealthy after endpoints and readiness probes are healthy.
+- All replicas are unavailable in both regions after a known-good digest rollback.
+- Both regions' backends remain `UNHEALTHY` after endpoints and readiness probes are healthy.
 - Terraform reports drift or proposes destroying shared infrastructure.
-- The issue affects the entire GCP region or control plane.
+- The issue affects the entire GCP region or control plane in a way that also threatens the other region (e.g. a shared dependency).
 - The known-good image cannot be retrieved.
 
-Capture the rollout revision, image digest, Pod events, Ingress events, backend health, alert names, and timestamps for the incident record. The current design has no cold standby cluster or automatic cross-region failover, so regional recovery requires a separate disaster-recovery procedure.
+Capture the rollout revision, image digest, Pod events, backend-service health per region, alert names, and timestamps for the incident record.

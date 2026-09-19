@@ -7,12 +7,13 @@ GitHub Actions uses short-lived Google Cloud credentials through GitHub OIDC and
 | Workflow | Trigger and scope | Purpose |
 | --- | --- | --- |
 | `on-pr.yaml` | Every pull request | Terraform formatting and validation, Kubernetes placeholder checks, container build, and HTTP smoke test. |
-| `on-release.yaml` | Pushes to `main` or creation of a `v*` version tag | Runs `release-please` on `main`; deploys only after a release tag is created by the merged release PR. |
+| `on-release.yaml` | Push to `main` | Runs `release-please` to create or update the release PR for changelog/versioning only. No application deployment occurs here. |
+| `on-deploy.yaml` | Push to a `v*` tag or manual dispatch with an existing release tag | Builds and deploys the latest tagged release, or redeploys an already-published release tag as a rollback without rebuilding. |
 | `on-infrastructure-update.yaml` | Pushes to `main` affecting `terraform/**`; also manual dispatch | Plans Terraform and automatically applies push-triggered plans. Manual runs apply only when the `apply` input is enabled. |
 | `on-state-bootstrap.yaml` | State-bootstrap or bootstrap-script changes; also manual dispatch | Runs the state-bootstrap helper workflow. Bootstrap remains an administrative lifecycle. |
 | `destroy-application.yaml` | Manual dispatch | Destroys application infrastructure through the protected `terraform-destroy` environment. It does not target bootstrap state. |
 
-Changes under `kubernetes/**` belong to `on-release.yaml`, not the Terraform workflow.
+Changes under `kubernetes/**` belong to `on-deploy.yaml`, not the Terraform workflow.
 
 ## GitHub Actions Repository Variables
 
@@ -23,12 +24,14 @@ Configure these repository variables:
 | `GCP_PROJECT_ID` | `nolan-sre-challenge` |
 | `GCP_REGION` | `us-central1` |
 | `PROJECT_NAMESPACE` | `nolan-sre` |
+| `GCP_SECONDARY_REGION` | `us-east1` |
+| `GCP_SECONDARY_CLUSTER_NAME` | `nolan-sre-secondary` |
 | `GCP_WIF_PROVIDER` | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-actions/providers/github-oidc` |
 | `GCP_DEPLOYER_SERVICE_ACCOUNT` | `github-actions-deployer@nolan-sre-challenge.iam.gserviceaccount.com` |
 | `TF_VAR_MASTER_AUTHORIZED_NETWORKS` | `[{"cidr_block":"203.0.113.10/32","display_name":"my-laptop"}]` |
 | `TF_VAR_NOTIFICATION_EMAILS` | `["YOUR_SUPPORT_EMAIL"]` |
 
-Replace `PROJECT_NUMBER` with the numeric project number found in the GCP Console. Set `GCP_REGION` to `us-central1`; `central1` is not a valid region. Replace the example CIDR with the trusted network allowed to reach the GKE control plane; never use `0.0.0.0/0`.
+Replace `PROJECT_NUMBER` with the numeric project number found in the GCP Console. Set `GCP_REGION` to `us-central1`; `central1` is not a valid region. Replace the example CIDR with the trusted network allowed to reach the GKE control plane; never use `0.0.0.0/0`. `GCP_SECONDARY_REGION` and `GCP_SECONDARY_CLUSTER_NAME` identify the failover cluster; the deploy workflow allowlists, deploys to, and restores both the primary and secondary clusters in every run.
 
 ## Pull Request Validation
 
@@ -36,10 +39,10 @@ The PR workflow checks Terraform formatting and validation, verifies that the Ku
 
 ## Release and Deployment
 
-The release flow has two separate stages:
+The release flow has two separate workflows:
 
-1. A push to `main` runs `release-please`. It creates or updates a release PR when Conventional Commits contain releasable changes. No application deployment occurs from this branch push.
-2. After the release PR is merged, `release-please` creates a `v*` version tag. That tag starts the deployment path, which checks out the tagged commit and deploys it.
+1. `on-release.yaml` runs on pushes to `main`. It invokes `release-please` to create or update the release PR when Conventional Commits contain releasable changes. It does not deploy the application.
+2. `on-deploy.yaml` runs on tag creation (`v*`) and can also be dispatched manually with an existing release tag. The tag-triggered run checks out the tagged commit, builds the image, publishes it to Artifact Registry, and deploys the digest-pinned manifest to both the primary and secondary clusters. The manual run validates the tag, resolves the tag to its existing digest in Artifact Registry, and redeploys that digest to both clusters without rebuilding.
 
 Conventional Commits determine release versions:
 
@@ -47,11 +50,11 @@ Conventional Commits determine release versions:
 - `feat:` creates a minor release.
 - A breaking change creates a major release.
 
-The tag deployment job runs on the GitHub-hosted `ubuntu-latest` runner. It authenticates with OIDC, logs in to Artifact Registry, publishes a SHA tag and the release tag, and captures the registry digest.
+The deploy workflow runs on the GitHub-hosted `ubuntu-latest` runner. It authenticates with OIDC, logs in to Artifact Registry, publishes a SHA tag and the release tag while building, or resolves an already-published tag for a rollback, and captures the registry digest for deployment.
 
-Kubernetes is rendered with `IMAGE_REPOSITORY@sha256:DIGEST`. Mutable tags are never used as the deployment reference. The job applies the rendered manifest and waits for `deployment/nolan-sre` to complete its rollout.
+Kubernetes is rendered once with `IMAGE_REPOSITORY@sha256:DIGEST` and applied identically to both clusters in a loop. Mutable tags are never used as the deployment reference. The job waits for `deployment/nolan-sre` to complete its rollout on each cluster before moving to the next.
 
-A Kubernetes-only change on `main` can create a release PR according to `release-please`; deployment occurs only after that PR is merged and its version tag is pushed.
+A Kubernetes-only change on `main` can create a release PR according to `release-please`; deployment occurs only after that PR is merged and its version tag is pushed. For rollback, use the manual `workflow_dispatch` trigger on `on-deploy.yaml` with a prior release tag such as `v1.2.3`. The workflow resolves the tag to its immutable digest and redeploys it.
 
 The release job uses the `RELEASE_PLEASE_TOKEN` repository secret rather than the built-in `GITHUB_TOKEN`. This is required because GitHub suppresses follow-on workflow runs for tags created by `GITHUB_TOKEN`. Configure `RELEASE_PLEASE_TOKEN` with a GitHub App or fine-grained personal access token that can read repository metadata, write contents, and write pull requests.
 
@@ -83,19 +86,19 @@ The Terraform workflow initializes, formats, validates, and plans with `terrafor
 
 ## Runner Requirements
 
-The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow configures gcloud, explicitly installs `gke-gcloud-auth-plugin`, temporarily appends the runner's public `/32` to the existing GKE master authorized networks, and restores the original allowlist in an `always()` cleanup step. The GKE control-plane access remains restricted; the workflow refuses to modify a cluster with no existing allowlist and never uses `0.0.0.0/0`.
+The deployment uses the GitHub-hosted `ubuntu-latest` runner, which provides Docker and outbound access to GitHub and Google APIs. The workflow configures gcloud, explicitly installs `gke-gcloud-auth-plugin`, temporarily appends the runner's public `/32` to the existing GKE master authorized networks on both the primary and secondary clusters, and restores each cluster's original allowlist in an `always()` cleanup step. GKE control-plane access remains restricted; the workflow refuses to modify either cluster if it has no existing allowlist and never uses `0.0.0.0/0`.
 
 ### Temporary GKE Access
 
-GitHub-hosted runner IP addresses are dynamic, so they cannot be permanently included in Terraform’s `master_authorized_networks`. The tag deployment workflow handles this temporarily:
+GitHub-hosted runner IP addresses are dynamic, so they cannot be permanently included in Terraform’s `master_authorized_networks`. The deploy workflow handles this temporarily for both tag-triggered releases and manual rollback dispatches, once per cluster:
 
 1. It obtains the runner’s public egress IP from `api.ipify.org`.
-2. It reads the cluster’s current master authorized CIDRs.
-3. It appends the runner IP as a `/32` and updates the cluster.
-4. It retrieves GKE credentials and deploys the digest-pinned manifest.
-5. An `if: always()` cleanup step restores the original CIDR list, even when deployment or rollout fails.
+2. For each of the primary and secondary clusters, it reads that cluster's current master authorized CIDRs and saves them separately.
+3. It appends the runner IP as a `/32` and updates each cluster.
+4. It retrieves GKE credentials and deploys the digest-pinned manifest to each cluster in turn.
+5. An `if: always()` cleanup step restores each cluster's original CIDR list independently, even when deployment or rollout fails partway through.
 
-This workflow preserves the existing allowlist and does not disable master authorized networks. The update is not atomic with deployment, so concurrent cluster access or Terraform applies should be avoided during the deployment window. If the GitHub runner is forcibly terminated before cleanup runs, inspect and restore the allowlist manually or run Terraform with the intended `master_authorized_networks` value.
+This workflow preserves the existing allowlist on both clusters and does not disable master authorized networks. The update is not atomic with deployment, so concurrent cluster access or Terraform applies should be avoided during the deployment window. If the GitHub runner is forcibly terminated before cleanup runs, inspect and restore the allowlist on both clusters manually or run Terraform with the intended `master_authorized_networks` value.
 
 ### Future Improvement
 

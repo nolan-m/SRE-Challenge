@@ -158,3 +158,81 @@ variable "maintenance_recurrence" {
   type        = string
   default     = "FREQ=WEEKLY;BYDAY=SU"
 }
+
+variable "secondary_region" {
+  description = "GCP region for the secondary (failover) regional Autopilot cluster."
+  type        = string
+  default     = "us-east1"
+}
+
+variable "secondary_cluster_name" {
+  description = "Secondary (failover) GKE cluster name."
+  type        = string
+  default     = "nolan-sre-secondary"
+}
+
+variable "secondary_subnetwork_name" {
+  description = "Secondary GKE subnet name."
+  type        = string
+  default     = "nolan-sre-gke-secondary"
+}
+
+variable "secondary_nodes_cidr" {
+  description = "Primary subnet range reserved for secondary-region GKE infrastructure."
+  type        = string
+  default     = "10.11.0.0/20"
+}
+
+variable "secondary_pods_cidr" {
+  description = "Secondary range reserved for Pod IPs in the secondary region."
+  type        = string
+  default     = "10.21.0.0/16"
+}
+
+variable "secondary_services_cidr" {
+  description = "Secondary range reserved for Service IPs in the secondary region."
+  type        = string
+  default     = "10.31.0.0/20"
+}
+
+variable "secondary_pods_secondary_range_name" {
+  description = "Name of the Pod secondary range in the secondary region."
+  type        = string
+  default     = "nolan-sre-pods-secondary"
+}
+
+variable "secondary_services_secondary_range_name" {
+  description = "Name of the Service secondary range in the secondary region."
+  type        = string
+  default     = "nolan-sre-services-secondary"
+}
+
+variable "secondary_master_ipv4_cidr" {
+  description = "Non-overlapping RFC1918 /28 range for the secondary cluster's private control-plane peering."
+  type        = string
+  default     = "172.16.0.16/28"
+}
+
+variable "primary_zones" {
+  description = "Zones within the primary region where standalone NEG backends are looked up."
+  type        = list(string)
+  default     = ["us-central1-a", "us-central1-b", "us-central1-c"]
+}
+
+variable "secondary_zones" {
+  description = "Zones within the secondary region where standalone NEG backends are looked up."
+  type        = list(string)
+  default     = ["us-east1-b", "us-east1-c", "us-east1-d"]
+}
+
+variable "neg_name" {
+  description = "Name of the standalone Network Endpoint Group created by the annotated Kubernetes Service in both clusters."
+  type        = string
+  default     = "nolan-sre-neg"
+}
+
+variable "enable_load_balancer_backends" {
+  description = "Wire the standalone NEGs into the load balancer's backend service. Leave false until the Kubernetes manifest has been deployed to both clusters and the NEGs exist, then set true and re-apply."
+  type        = bool
+  default     = false
+}

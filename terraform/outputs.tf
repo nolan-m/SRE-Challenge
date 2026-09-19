@@ -29,6 +29,21 @@ output "cluster_endpoint" {
   sensitive   = true
 }
 
+output "secondary_cluster_name" {
+  description = "Secondary (failover) GKE cluster name."
+  value       = google_container_cluster.secondary.name
+}
+
+output "secondary_cluster_location" {
+  description = "Secondary (failover) GKE cluster region."
+  value       = google_container_cluster.secondary.location
+}
+
+output "load_balancer_ip" {
+  description = "Global external HTTP load balancer IP address serving both regions."
+  value       = google_compute_global_address.lb.address
+}
+
 output "github_actions_workload_identity_provider" {
   description = "Full Workload Identity Provider resource name for GitHub Actions authentication."
   value       = "projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${var.github_workload_identity_pool_id}/providers/${var.github_workload_identity_provider_id}"

@@ -29,3 +29,27 @@ resource "google_compute_router" "main" {
   region  = var.region
   network = google_compute_network.main.id
 }
+
+resource "google_compute_subnetwork" "gke_secondary" {
+  name                     = var.secondary_subnetwork_name
+  ip_cidr_range            = var.secondary_nodes_cidr
+  region                   = var.secondary_region
+  network                  = google_compute_network.main.id
+  private_ip_google_access = true
+
+  secondary_ip_range {
+    range_name    = var.secondary_pods_secondary_range_name
+    ip_cidr_range = var.secondary_pods_cidr
+  }
+
+  secondary_ip_range {
+    range_name    = var.secondary_services_secondary_range_name
+    ip_cidr_range = var.secondary_services_cidr
+  }
+}
+
+resource "google_compute_router" "secondary" {
+  name    = "${var.network_name}-router-secondary"
+  region  = var.secondary_region
+  network = google_compute_network.main.id
+}
