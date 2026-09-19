@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.5...v0.3.0) (2026-09-19)
+
+
+### Features
+
+* enable multi region ([aaa3bfe](https://github.com/nolan-m/SRE-Challenge/commit/aaa3bfe96131e7f1bbec760c462624612308ccdb))
+
+
+### Bug Fixes
+
+* discover zones ([5efeac0](https://github.com/nolan-m/SRE-Challenge/commit/5efeac0de2dc7315537d19e2465c938b0a8af212))
+
 ## [0.2.5](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.4...v0.2.5) (2026-09-13)
 
 
