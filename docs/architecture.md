@@ -13,6 +13,31 @@ The platform runs in Google Cloud:
 
 The state-bootstrap Terraform configuration owns the state bucket IAM, Workload Identity Pool and provider, and GitHub service accounts. Application Terraform owns the runtime infrastructure.
 
+```mermaid
+graph TB
+    User(("Users")) -->|"HTTP :80"| LB["Global External HTTP\nApplication Load Balancer\n(one static IP)"]
+
+    subgraph GCP["Google Cloud Project"]
+        LB --> NEGp["Standalone NEG"]
+        LB --> NEGs["Standalone NEG"]
+
+        subgraph Primary["us-central1 (primary)"]
+            NEGp --> PodsP["nolan-sre Pods (3-10x)\nGKE Autopilot"]
+        end
+
+        subgraph Secondary["us-east1 (secondary)"]
+            NEGs --> PodsS["nolan-sre Pods (3-10x)\nGKE Autopilot"]
+        end
+
+        AR["Artifact Registry"] -.->|pulls image| PodsP
+        AR -.->|pulls image| PodsS
+
+        LB -.->|health checks & metrics| MON["Cloud Monitoring\nDashboard, SLO, Alerts"]
+    end
+```
+
+Both regions run active-active behind the same load balancer; if one region's health checks fail, the load balancer shifts all traffic to the other automatically, with no DNS change.
+
 ## Application Runtime
 
 The Kubernetes manifest creates the `nolan-sre` namespace, service account, Deployment, ClusterIP Service (annotated for a standalone NEG), HorizontalPodAutoscaler, PodDisruptionBudget, and NetworkPolicies. The identical manifest is applied to both the primary and secondary clusters.
