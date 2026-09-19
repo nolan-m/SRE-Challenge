@@ -33,10 +33,8 @@ secondary_pods_secondary_range_name     = "nolan-sre-pods-secondary"
 secondary_services_secondary_range_name = "nolan-sre-services-secondary"
 secondary_master_ipv4_cidr              = "172.16.0.16/28"
 
-primary_zones   = ["us-central1-a", "us-central1-b", "us-central1-c"]
-secondary_zones = ["us-east1-b", "us-east1-c", "us-east1-d"]
-neg_name        = "nolan-sre-neg"
+neg_name = "nolan-sre-neg"
 
 # Set to true only after the Kubernetes manifest has been deployed to both clusters and the
 # nolan-sre-neg NEG exists in every zone above (gcloud compute network-endpoint-groups list).
-enable_load_balancer_backends = false
+enable_load_balancer_backends = true

@@ -213,18 +213,6 @@ variable "secondary_master_ipv4_cidr" {
   default     = "172.16.0.16/28"
 }
 
-variable "primary_zones" {
-  description = "Zones within the primary region where standalone NEG backends are looked up."
-  type        = list(string)
-  default     = ["us-central1-a", "us-central1-b", "us-central1-c"]
-}
-
-variable "secondary_zones" {
-  description = "Zones within the secondary region where standalone NEG backends are looked up."
-  type        = list(string)
-  default     = ["us-east1-b", "us-east1-c", "us-east1-d"]
-}
-
 variable "neg_name" {
   description = "Name of the standalone Network Endpoint Group created by the annotated Kubernetes Service in both clusters."
   type        = string

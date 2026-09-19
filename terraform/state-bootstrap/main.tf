@@ -125,6 +125,8 @@ locals {
   terraform_roles = toset([
     "roles/artifactregistry.admin",
     "roles/compute.networkAdmin",
+    # Manages firewall rules and SSL certificates, which compute.networkAdmin excludes.
+    "roles/compute.securityAdmin",
     "roles/container.admin",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",

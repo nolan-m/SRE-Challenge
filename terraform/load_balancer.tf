@@ -32,8 +32,37 @@ resource "google_compute_firewall" "lb_health_check" {
   }
 }
 
+# Discover which zones already have the named NEG instead of guessing where Autopilot
+# scheduled Pods; avoids "networkEndpointGroups ... not found" for zones with no replicas.
+data "external" "primary_neg_zones" {
+  count = var.enable_load_balancer_backends ? 1 : 0
+
+  program = ["bash", "${path.module}/scripts/discover-neg-zones.sh"]
+  query = {
+    project_id = var.project_id
+    region     = var.region
+    neg_name   = var.neg_name
+  }
+}
+
+data "external" "secondary_neg_zones" {
+  count = var.enable_load_balancer_backends ? 1 : 0
+
+  program = ["bash", "${path.module}/scripts/discover-neg-zones.sh"]
+  query = {
+    project_id = var.project_id
+    region     = var.secondary_region
+    neg_name   = var.neg_name
+  }
+}
+
+locals {
+  primary_neg_zones   = var.enable_load_balancer_backends ? compact(split(",", data.external.primary_neg_zones[0].result.zones)) : []
+  secondary_neg_zones = var.enable_load_balancer_backends ? compact(split(",", data.external.secondary_neg_zones[0].result.zones)) : []
+}
+
 data "google_compute_network_endpoint_group" "primary" {
-  for_each = var.enable_load_balancer_backends ? toset(var.primary_zones) : toset([])
+  for_each = toset(local.primary_neg_zones)
 
   name    = var.neg_name
   zone    = each.value
@@ -41,7 +70,7 @@ data "google_compute_network_endpoint_group" "primary" {
 }
 
 data "google_compute_network_endpoint_group" "secondary" {
-  for_each = var.enable_load_balancer_backends ? toset(var.secondary_zones) : toset([])
+  for_each = toset(local.secondary_neg_zones)
 
   name    = var.neg_name
   zone    = each.value
