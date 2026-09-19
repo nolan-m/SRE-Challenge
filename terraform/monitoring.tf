@@ -46,15 +46,83 @@ resource "google_monitoring_slo" "availability" {
       total_service_filter = join(" AND ", [
         "metric.type=\"loadbalancing.googleapis.com/https/request_count\"",
         "resource.type=\"https_lb_rule\"",
-        "resource.labels.backend_target_name=starts_with(\"k8s1-\")",
+        "resource.labels.backend_target_name=\"${var.cluster_name}-backend\"",
       ])
       good_service_filter = join(" AND ", [
         "metric.type=\"loadbalancing.googleapis.com/https/request_count\"",
         "resource.type=\"https_lb_rule\"",
-        "resource.labels.backend_target_name=starts_with(\"k8s1-\")",
+        "resource.labels.backend_target_name=\"${var.cluster_name}-backend\"",
         "metric.labels.response_code_class=200",
       ])
     }
+  }
+}
+
+# Standard multi-window, multi-burn-rate SLO alerting (Google SRE workbook): a short and long
+# window must both exceed the burn-rate threshold, avoiding single-window noise.
+resource "google_monitoring_alert_policy" "slo_burn_rate_fast" {
+  project               = var.project_id
+  display_name          = "${var.cluster_name} SLO fast burn (page)"
+  combiner              = "AND"
+  enabled               = true
+  notification_channels = local.notification_channel_ids
+
+  conditions {
+    display_name = "1h error-budget burn rate above 14.4x"
+    condition_threshold {
+      filter          = "select_slo_burn_rate(\"${google_monitoring_slo.availability.name}\", \"3600s\")"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 14.4
+      duration        = "0s"
+    }
+  }
+
+  conditions {
+    display_name = "5m error-budget burn rate above 14.4x"
+    condition_threshold {
+      filter          = "select_slo_burn_rate(\"${google_monitoring_slo.availability.name}\", \"300s\")"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 14.4
+      duration        = "0s"
+    }
+  }
+
+  documentation {
+    content   = "At this burn rate the 30-day error budget is exhausted in about 2 days. Page immediately: check backend-service health per region, recent rollouts, and the availability/latency alerts."
+    mime_type = "text/markdown"
+  }
+}
+
+resource "google_monitoring_alert_policy" "slo_burn_rate_slow" {
+  project               = var.project_id
+  display_name          = "${var.cluster_name} SLO slow burn (ticket)"
+  combiner              = "AND"
+  enabled               = true
+  notification_channels = local.notification_channel_ids
+
+  conditions {
+    display_name = "6h error-budget burn rate above 6x"
+    condition_threshold {
+      filter          = "select_slo_burn_rate(\"${google_monitoring_slo.availability.name}\", \"21600s\")"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 6
+      duration        = "0s"
+    }
+  }
+
+  conditions {
+    display_name = "30m error-budget burn rate above 6x"
+    condition_threshold {
+      filter          = "select_slo_burn_rate(\"${google_monitoring_slo.availability.name}\", \"1800s\")"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 6
+      duration        = "0s"
+    }
+  }
+
+  documentation {
+    content   = "At this burn rate the 30-day error budget is exhausted in about 5 days. Investigate during business hours: check backend-service health per region, recent rollouts, and the availability/latency alerts."
+    mime_type = "text/markdown"
   }
 }
 
@@ -310,6 +378,40 @@ resource "google_monitoring_alert_policy" "restarts" {
 
   documentation {
     content   = "One or more NGINX containers restarted during the last five minutes. Check Pod events, memory pressure, and rollout history."
+    mime_type = "text/markdown"
+  }
+}
+
+# Fires when a region stops reporting any running-container metrics, e.g. all nodes/Pods
+# gone during a regional outage. Aggregate signals (5xx rate, latency, CPU) can stay quiet
+# because the other active-active region absorbs traffic, so this closes that blind spot.
+resource "google_monitoring_alert_policy" "region_down" {
+  for_each = {
+    primary   = var.region
+    secondary = var.secondary_region
+  }
+
+  project               = var.project_id
+  display_name          = "${var.cluster_name} ${each.key} region (${each.value}) has no running Pods"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = local.notification_channel_ids
+
+  conditions {
+    display_name = "No NGINX CPU usage reported from ${each.value}"
+    condition_absent {
+      filter   = "metric.type=\"kubernetes.io/container/cpu/core_usage_time\" resource.type=\"k8s_container\" resource.labels.namespace_name=\"${var.cluster_name}\" resource.labels.location=\"${each.value}\" resource.labels.container_name=\"nginx\""
+      duration = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+    }
+  }
+
+  documentation {
+    content   = "No ${each.key} (${each.value}) NGINX container CPU metrics for five minutes, indicating that region has zero running Pods. Check 'gcloud container clusters describe' node count, 'kubectl get pods,nodes', and the backend-service health for this region; the other region should still be serving traffic."
     mime_type = "text/markdown"
   }
 }

@@ -10,7 +10,10 @@ TARGET="primary"
 RESTORE=true
 FORCE=false
 POLL_INTERVAL=5
-POLL_TIMEOUT=180
+# Autopilot scales nodes to zero when replicas hit 0, so restoring can require new node
+# provisioning (often 1-3+ minutes) on top of Pod scheduling, NEG registration, and LB
+# health-check convergence; default timeout is generous to accommodate that.
+POLL_TIMEOUT=420
 
 usage() {
   cat <<EOF
@@ -21,11 +24,12 @@ replicas, then (by default) restores it once the backend service reports unhealt
 Never modifies Terraform state, master-authorized-networks, or DNS.
 
 Options:
-  --var-file PATH   Terraform variable file relative to terraform/ (default: $VAR_FILE)
-  --target REGION   Which region to fail: primary or secondary (default: $TARGET)
-  --no-restore      Leave the target scaled to zero after the drain is confirmed
-  --force           Skip the confirmation prompt
-  -h, --help        Show this help
+  --var-file PATH       Terraform variable file relative to terraform/ (default: $VAR_FILE)
+  --target REGION       Which region to fail: primary or secondary (default: $TARGET)
+  --no-restore          Leave the target scaled to zero after the drain is confirmed
+  --poll-timeout SECONDS  Max seconds to wait for each health-state transition (default: $POLL_TIMEOUT)
+  --force               Skip the confirmation prompt
+  -h, --help            Show this help
 EOF
 }
 
@@ -44,6 +48,11 @@ while [[ $# -gt 0 ]]; do
     --no-restore)
       RESTORE=false
       shift
+      ;;
+    --poll-timeout)
+      [[ $# -ge 2 ]] || { echo "Missing value for --poll-timeout" >&2; exit 2; }
+      POLL_TIMEOUT="$2"
+      shift 2
       ;;
     --force)
       FORCE=true
@@ -118,7 +127,8 @@ while true; do
     break
   fi
   if (( ELAPSED >= POLL_TIMEOUT )); then
-    echo "Timed out after ${POLL_TIMEOUT}s waiting for an UNHEALTHY backend; check backend-service health manually." >&2
+    echo "Timed out after ${POLL_TIMEOUT}s waiting for an UNHEALTHY backend; current health:" >&2
+    gcloud compute backend-services get-health "$BACKEND_SERVICE" --global --project "$PROJECT_ID" 2>&1 >&2 || true
     break
   fi
   sleep "$POLL_INTERVAL"
@@ -147,7 +157,9 @@ while true; do
     break
   fi
   if (( ELAPSED >= POLL_TIMEOUT )); then
-    echo "Timed out after ${POLL_TIMEOUT}s waiting for HEALTHY backends; check backend-service health manually." >&2
+    echo "Timed out after ${POLL_TIMEOUT}s waiting for HEALTHY backends; current health:" >&2
+    gcloud compute backend-services get-health "$BACKEND_SERVICE" --global --project "$PROJECT_ID" 2>&1 >&2 || true
+    echo "Autopilot may still be provisioning nodes for the restored replicas; check 'kubectl -n $NAMESPACE get pods,nodes' and re-run 'gcloud compute backend-services get-health' shortly." >&2
     break
   fi
   sleep "$POLL_INTERVAL"
