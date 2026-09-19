@@ -36,5 +36,6 @@ secondary_master_ipv4_cidr              = "172.16.0.16/28"
 neg_name = "nolan-sre-neg"
 
 # Set to true only after the Kubernetes manifest has been deployed to both clusters and the
-# nolan-sre-neg NEG exists in every zone above (gcloud compute network-endpoint-groups list).
+# nolan-sre-neg NEG exists (gcloud compute network-endpoint-groups list); zones are discovered
+# dynamically by terraform/scripts/discover-neg-zones.sh, no manual zone list to maintain.
 enable_load_balancer_backends = true

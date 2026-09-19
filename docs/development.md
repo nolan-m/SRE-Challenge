@@ -72,11 +72,11 @@ After infrastructure exists, fetch cluster credentials and inspect the workload:
 
 ```bash
 gcloud container clusters get-credentials nolan-sre --region us-central1 --project YOUR_PROJECT_ID
-kubectl --namespace nolan-sre get pods,service,ingress
+kubectl --namespace nolan-sre get pods,service
 kubectl --namespace nolan-sre describe deployment nolan-sre
 ```
 
-Use `scripts/deploy.sh` for a complete local deployment. To avoid rebuilding, provide an immutable digest with `--image-reference`. Set `MASTER_AUTHORIZED_IP` to a trusted CIDR before using the deployment or teardown scripts.
+Use `scripts/deploy.sh` for a complete local deployment to both clusters. To avoid rebuilding, provide an immutable digest with `--image-reference`. Set `MASTER_AUTHORIZED_IP` to a trusted CIDR before using the deployment or teardown scripts. Use `scripts/check-health.sh` for a quick read-only summary of both clusters, the load balancer, and backend health.
 
 ## Safe Teardown
 

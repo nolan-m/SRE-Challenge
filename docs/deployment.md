@@ -94,6 +94,8 @@ terraform -chdir=terraform output -raw load_balancer_ip
 curl --fail http://LOAD_BALANCER_IP/
 ```
 
+Or run `./scripts/check-health.sh` for a combined read-only summary of both clusters' workloads, backend-service health, and a live load-balancer check.
+
 ## Rollback
 
 Roll back by deploying a previously verified digest, then check rollout status and history:

@@ -29,7 +29,17 @@ A complete solution should include:
 
 # Solution
 
-The solution uses Terraform to deploy secure GCP infrastructure and a regional Autopilot GKE cluster, deploys the application as a scalable Kubernetes service, and provides an automated GitHub Actions delivery pipeline. Cloud Monitoring provides alerting for traffic, errors, latency, and saturation, together with an SLI/SLO dashboard for measuring service reliability. The application is available at http://8.232.127.195/.
+The solution uses Terraform to deploy secure, cross-region GCP infrastructure: two regional Autopilot GKE clusters (`us-central1` and `us-east1`) running the application active-active, behind a single global external HTTP Application Load Balancer with standalone Network Endpoint Group backends in both regions. GitHub Actions provides an automated, OIDC-authenticated delivery pipeline covering Terraform validation/plan/apply, container build and publish, and digest-pinned deployment to both clusters. Cloud Monitoring provides alerting for traffic, errors, latency, saturation, and per-region "no running Pods" detection, together with an SLI/SLO dashboard (with multi-window, multi-burn-rate alert policies) for measuring service reliability. The application is available at http://8.232.91.152/.
+
+This meets the challenge's required solution:
+
+* **Infrastructure deployed using IaC** — all of `terraform/` (network, two GKE clusters, load balancer, monitoring, IAM) and the Kubernetes manifest.
+* **Service deployed** — running in both regions with health checks, autoscaling, and PodDisruptionBudgets. See [Architecture](docs/architecture.md).
+* **Automated deployment pipeline** — GitHub Actions workflows for PR validation, Terraform plan/apply, and tag-triggered deployment/rollback to both clusters. See [CI/CD](docs/ci-cd.md).
+* **Monitoring** — a Cloud Monitoring dashboard and alert policies covering the four golden signals plus regional-outage detection. See [Architecture](docs/architecture.md#monitoring-and-slo).
+* **SLI/SLO dashboard** — a 99.9% request-based availability SLO with fast/slow burn-rate alerting.
+
+Beyond the baseline requirements, the solution also adds cross-region automatic failover (no single region is a single point of failure) and a non-destructive failover drill script (`scripts/simulate-failover.sh`) to verify it.
 
 
 # Documentation

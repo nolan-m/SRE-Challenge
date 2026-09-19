@@ -28,6 +28,12 @@ gcloud container clusters get-credentials nolan-sre-secondary \
 
 ## 1. Establish Impact
 
+For a quick read-only summary of both clusters, workload status, backend health, and a live LB check in one command:
+
+```bash
+./scripts/check-health.sh
+```
+
 Check the Pods, rollout, and Service on the affected cluster (both clusters run the same workload active-active):
 
 ```bash
