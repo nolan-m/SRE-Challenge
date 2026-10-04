@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/nolan-m/SRE-Challenge/compare/v0.3.1...v0.4.0) (2026-10-04)
+
+
+### Features
+
+* reduce to 2 pods ([8003c05](https://github.com/nolan-m/SRE-Challenge/commit/8003c056dde5147437cb4cb141ba3d0b957a3dad))
+
 ## [0.3.1](https://github.com/nolan-m/SRE-Challenge/compare/v0.3.0...v0.3.1) (2026-10-04)
 
 
