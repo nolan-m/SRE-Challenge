@@ -71,7 +71,19 @@ for pair in "${PRIMARY_CLUSTER_NAME}:${PRIMARY_REGION}" "${SECONDARY_CLUSTER_NAM
   echo
   echo "=== $cluster ($region) workload ==="
   gcloud container clusters get-credentials "$cluster" --region "$region" --project "$PROJECT_ID" >/dev/null 2>&1
-  kubectl --namespace "$NAMESPACE" get pods,deployment,hpa 2>&1
+  declare -A node_zones=()
+  while IFS=$'\t' read -r node zone; do
+    [[ -n "$node" ]] && node_zones["$node"]="$zone"
+  done < <(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}{end}')
+
+  printf '%-50s %-12s %-45s %s\n' POD STATUS NODE ZONE
+  while IFS=$'\t' read -r pod status node; do
+    zone="-"
+    [[ -n "$node" ]] && zone="${node_zones[$node]:--}"
+    printf '%-50s %-12s %-45s %s\n' "$pod" "$status" "${node:--}" "$zone"
+  done < <(kubectl --namespace "$NAMESPACE" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.spec.nodeName}{"\n"}{end}')
+
+  kubectl --namespace "$NAMESPACE" get deployment,hpa 2>&1
 done
 
 echo
