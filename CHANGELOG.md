@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/nolan-m/SRE-Challenge/compare/v0.3.0...v0.3.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* modify health script to show zone ([1769daa](https://github.com/nolan-m/SRE-Challenge/commit/1769daac6d0267d7f963271137b83de1f1b32cb3))
+* spread out zones in kube manifest ([4b0a834](https://github.com/nolan-m/SRE-Challenge/commit/4b0a834d4ec3b5ad04ce51fb32a445e5005c8913))
+
 ## [0.3.0](https://github.com/nolan-m/SRE-Challenge/compare/v0.2.5...v0.3.0) (2026-09-19)
 
 
