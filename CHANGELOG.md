@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/nolan-m/SRE-Challenge/compare/v0.4.0...v0.5.0) (2026-10-05)
+
+
+### Features
+
+* update app ([861b01d](https://github.com/nolan-m/SRE-Challenge/commit/861b01ddbea0dc939fb8c7d06b5ebbe294c7b3ff))
+
 ## [0.4.0](https://github.com/nolan-m/SRE-Challenge/compare/v0.3.1...v0.4.0) (2026-10-04)
 
 
